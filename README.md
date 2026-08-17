@@ -1,14 +1,36 @@
-*Read this in [Español](README.es.md).*
+# Scheduled Access — Restrict Jellyfin media by day and time
 
-# Jellyfin Scheduled Access
+**Jellyfin plugin to restrict media access by day of the week and time.**
 
-A Jellyfin plugin that restricts what content a user can see **based on the day of the week and the time of day**, by tag, by library, or both.
+Restrict movies, TV shows and other media based on the day and time, using Jellyfin tags and libraries. A user signs in normally, but only sees the content you allow for that moment.
 
-Examples:
+![The plugin's configuration page: a toggle to enable day-of-week restrictions, and one rule per user with day checkboxes, a time slot, library checkboxes, a mode selector and a tag list.](docs/images/configuration.png)
 
-- Only content tagged `sunday` on Sundays, and the full library the rest of the week.
-- Educational shows on weekday mornings, something else in the afternoon.
-- Only the "Kids TV" library after 19:00.
+---
+
+## Use cases
+
+- Allow educational content Monday–Friday.
+- Allow cartoons only on weekends.
+- Restrict children's content during school hours.
+- Give a Jellyfin user different media access depending on the day.
+- Create weekday/weekend content schedules.
+- Show only a specific library during certain hours of the day.
+- Swap what a kids account can watch between morning and evening.
+
+---
+
+## How is this different from Jellyfin's Access Schedule?
+
+Jellyfin already ships **Access Schedule** (*Users → (user) → Access Schedule*), and it is easy to assume it already does this. It doesn't.
+
+> Jellyfin's built-in **Access Schedule** controls **when a user can access Jellyfin**.
+>
+> This plugin controls **what content the user can access** depending on the current day and time.
+
+Access Schedule is all-or-nothing: outside the allowed window the user simply can't get in. It doesn't distinguish between libraries or between kinds of content.
+
+**If all you want is to stop someone signing in on Sundays, or outside certain hours, use Access Schedule and skip this plugin.** This plugin earns its place when the user **should** be able to sign in, but should see a different subset of the library depending on the day and time.
 
 ---
 
@@ -17,9 +39,8 @@ Examples:
 | | Version | Note |
 |---|---|---|
 | Jellyfin Server | **10.11.x** | The `targetAbi` must match, or the plugin shows up as *NotSupported* |
-| .NET SDK | **9.0** | Jellyfin 10.11 targets `net9.0`; 10.10 targeted `net8.0` |
 
-The `Jellyfin.Controller` / `Jellyfin.Model` packages in the `csproj` must be **pinned to the server's exact version**.
+The DLL is pure IL, so the architecture (x86_64, ARM) is irrelevant — only the server version matters. The same build works on a Raspberry Pi and on an x86 server.
 
 ---
 
@@ -38,7 +59,7 @@ The `Jellyfin.Controller` / `Jellyfin.Model` packages in the `csproj` must be **
 
 **3. Restart the server.** Jellyfin only loads new plugins at startup.
 
-Prefer this over copying files by hand: the folder is created by the service itself, with correct ownership and a consistent `meta.json`, which avoids both pitfalls described under [Debugging](#debugging).
+Prefer this over copying files by hand: the folder is created by the service itself, with correct ownership and a consistent `meta.json`.
 
 > **If the plugin doesn't show up in the catalog**, check in this order:
 > 1. That you're looking at *Catalog*, not *Repositories*.
@@ -48,115 +69,7 @@ Prefer this over copying files by hand: the folder is created by the service its
 
 ### Manual installation
 
-Download the `.zip` from [Releases](https://github.com/bruce-rgb/jellyfin-plugin-scheduled-access/releases), extract it into a folder under `<datadir>/plugins/` and restart. Per-platform details are under [Deploying to a real server](#deploying-to-a-real-server-docker).
-
----
-
-## How it works
-
-Jellyfin already evaluates each item's visibility against two lists in the user policy. This is the server's actual logic (`BaseItem.IsVisibleViaTags`, v10.11.11):
-
-```csharp
-var allTags = GetInheritedTags();
-if (user.GetPreference(PreferenceKind.BlockedTags).Any(i => allTags.Contains(i, ...)))
-    return false;                                    // BlockedTags wins, evaluated first
-
-var parent = GetParents().FirstOrDefault() ?? this;
-if (parent is UserRootFolder or AggregateFolder or UserView)
-    return true;                                     // root level skips the AllowedTags check
-
-var allowedTagsPreference = user.GetPreference(PreferenceKind.AllowedTags);
-if (!skipAllowedTagsCheck && allowedTagsPreference.Length != 0 &&
-    !allowedTagsPreference.Any(i => allTags.Contains(i, ...)))
-    return false;                                    // strict allowlist
-```
-
-The plugin **does not filter content itself**: it only rewrites the user's `AllowedTags` / `BlockedTags` according to the day, and lets the server do the rest.
-
-Two consequences worth knowing:
-
-- **`GetInheritedTags()`**: tags are inherited from parent folders and collections. You can tag a whole folder instead of item by item.
-- **Root level skips the filter**: libraries stay visible on the home screen; what gets filtered is their contents.
-
-### The two modes
-
-| Mode | Field | Behaviour | Risk |
-|---|---|---|---|
-| `Block` — *hide content with these tags* | `BlockedTags` | Hides only what is tagged | **Fails open**: new untagged content stays visible |
-| `AllowOnly` — *show only content with these tags* | `AllowedTags` | Hides everything **without** the tag | **Fails closed**: new untagged content disappears |
-
-If the goal is to genuinely restrict, `AllowOnly` is the safe mode. If you only want to set aside a few specific things, `Block` requires far less tagging work.
-
-### Restoration: why snapshots exist
-
-Before applying the first restriction to a user, the plugin saves a **snapshot** (`PolicySnapshot`) of their original `AllowedTags` / `BlockedTags`, and persists it in the configuration XML.
-
-This isn't incidental — it's the critical safety mechanism. Without it, if the server were shut down on a Sunday with the restriction in place, the user would stay restricted **indefinitely**: there would be no way to know their original state. With the snapshot on disk, Monday's run (or the next startup) undoes it.
-
-The desired state is **always computed from the snapshot**, never from the current policy. That makes the task idempotent: running it ten times doesn't accumulate tags.
-
-#### Two invariants that must hold
-
-Both came out of real bugs, and breaking either one leaves users permanently restricted:
-
-**1. Restoration is driven by snapshots, not by rules.**
-
-`ExecuteAsync` works in two phases: first it applies the rules that are in effect today and records which users ended up restricted; then it walks **the snapshots** and undoes every one that doesn't back a current restriction.
-
-The intuitive approach would be to walk the rules and restore the ones that don't apply today — and it's wrong. If you delete a rule, there's nothing left to walk: the user is never visited and their restriction is never undone. Walking snapshots covers deleted rules, unchecked days, changed users and a disabled plugin all at once.
-
-A snapshot is only discarded if restoration **succeeded**. If it fails, the snapshot survives and the next trigger retries.
-
-**2. Snapshots are never accepted from the client.**
-
-They are server state. `Plugin.UpdateConfiguration` discards any that arrive in the `POST` and keeps its own:
-
-```csharp
-if (configuration is PluginConfiguration incoming)
-{
-    incoming.Snapshots = Configuration.Snapshots;   // read BEFORE base.UpdateConfiguration
-}
-```
-
-Without this, the config page reads them when it opens and sends them back on save. If the task created a snapshot after the page loaded, saving deletes it; the next run finds none and takes a fresh one **against the already-restricted policy**, recording the restricted state as if it were the original.
-
-The symptom is treacherous: the log reports `Policy restored` perfectly normally, but restores to the corrupted state and the user stays restricted. You spot it in the log as a second snapshot for the same user with a non-zero count:
-
-```
-Policy snapshot saved for "test" (allowed=0, ...)   ← correct original
-Policy snapshot saved for "test" (allowed=1, ...)   ← corrupt: captured the restricted state
-```
-
-If this happens the original data is lost, and the tags must be cleared by hand under **Users → *(user)* → Parental Control**.
-
-### Time slots
-
-A rule carries a start and an end, stored as minutes from midnight:
-
-- **Both at 00:00** covers the whole day.
-- **End earlier than start** runs past midnight, and **the checked day is the one the slot starts on** — a Sunday 22:00–06:00 rule is still active on Monday at 02:00.
-- **The end is exclusive**: at 11:00 sharp, an 08:00–11:00 slot no longer applies.
-- **When slots overlap, the shortest wins**, so a specific slot can override a general one without having to carve up the general rule. Ties are broken by declaration order, so the outcome is always deterministic.
-
-### Libraries
-
-A rule can also limit which libraries are visible while it's active, by setting `EnableAllFolders` to false and `EnabledFolders` to the chosen list.
-
-The two filters are independent and combine: you can restrict to one library *and* filter by tags inside it. An empty library list leaves library access untouched.
-
-### What drives it: a watcher, not a polling task
-
-Time slots need precision that a scheduled task can't give. An interval trigger would fire up to an hour late, and dropping it to minutes would flood the dashboard's task history with hundreds of daily entries.
-
-Instead, `ScheduleWatcher` — an `IHostedService` registered through `IPluginServiceRegistrator` — computes the next slot boundary and sleeps exactly until it, leaving no trace in that history. Saving the configuration wakes it immediately, so changes apply within seconds.
-
-It caps each sleep at one hour as a safety net: if the machine suspends, the clock changes, or DST shifts, recomputing hourly corrects the drift at no real cost, because a run with nothing to change writes nothing.
-
-The `Apply day-of-week restrictions` scheduled task remains, but only with a startup and a daily trigger. It's a manual button for diagnosis and a daily fallback in case the watcher fails to start — not the thing that switches slots.
-
-Both call the same `ScheduleEnforcer`, which is the only code that writes policies and serialises its runs behind a semaphore. Two concurrent passes could interleave reading and writing snapshots and record an already-restricted state as the original — the irreversible corruption this whole mechanism exists to prevent.
-
-Disabling the plugin (`Enabled = false`) **leaves no restrictions dangling**: the next run restores every pending snapshot and discards them.
+Download the `.zip` from [Releases](https://github.com/bruce-rgb/jellyfin-plugin-scheduled-access/releases), extract it into a folder under `<datadir>/plugins/` and restart. Per-platform details, including Docker, are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ---
 
@@ -164,11 +77,11 @@ Disabling the plugin (`Enabled = false`) **leaves no restrictions dangling**: th
 
 **Dashboard → Plugins → Scheduled Access**
 
-![The plugin's configuration page: a toggle to enable day-of-week restrictions, and one rule per user with day checkboxes, a mode selector and a tag list.](docs/images/configuration.png)
-
 1. Tick *Enable day-of-week restrictions*.
 2. **Add rule**: pick a user, check the days, set the time slot, optionally check libraries, choose the tag mode and enter comma-separated tags.
 3. Save.
+
+Changes apply within seconds — saving wakes the plugin immediately, so there's no need to wait for midnight or restart anything.
 
 A worked example — educational content on weekday mornings, cartoons before dinner:
 
@@ -179,303 +92,46 @@ A worked example — educational content on weekday mornings, cartoons before di
 
 Outside both slots no rule applies, so the child sees their normal library.
 
-On save the plugin **queues the task automatically**, so changes take effect within seconds instead of waiting for midnight. This is done by `Plugin.UpdateConfiguration`, which is `virtual` on `BasePlugin<T>`:
+> After a rule applies, **refresh the client or sign out and back in**: the web UI caches views and may keep showing the previous content even though the policy already changed.
 
-```csharp
-public override void UpdateConfiguration(BasePluginConfiguration configuration)
-{
-    base.UpdateConfiguration(configuration);
-    _taskManager.QueueIfNotRunning<ApplyTagScheduleTask>();
-}
-```
+### The two tag modes
 
-`ITaskManager` is injected through the plugin constructor: Jellyfin instantiates plugins through its DI container, so it accepts services beyond the two mandatory parameters.
+This is the setting most worth understanding before you save, because the two modes fail in opposite directions:
 
-> After it applies, **refresh the client or sign out and back in**: the web UI caches views and may keep showing the previous content even though the policy already changed.
+| Mode | Behaviour | Risk |
+|---|---|---|
+| **Hide content with these tags** | Hides only what is tagged | **Fails open**: new untagged content stays visible |
+| **Show only content with these tags** | Hides everything **without** the tag | **Fails closed**: new untagged content disappears |
 
-You can also run it manually from **Dashboard → Scheduled Tasks → Apply day-of-week restrictions**.
+If the goal is to genuinely restrict what a child can reach, *show only* is the safe mode — anything you forget to tag stays hidden rather than slipping through. If you only want to set aside a few specific things, *hide* requires far less tagging work.
 
----
+Tags are **inherited from parent folders and collections**, so you can tag a whole folder instead of item by item.
 
-## Localisation
+### Time slots
 
-The configuration page ships in **English and Spanish**, picking the language automatically.
+- **Both times at 00:00** covers the whole day.
+- **The end is exclusive**: at 11:00 sharp, an 08:00–11:00 slot no longer applies.
+- **End earlier than start** runs past midnight, and **the checked day is the one the slot starts on** — a Sunday 22:00–06:00 rule is still active on Monday at 02:00.
+- **When slots overlap, the shortest wins**, so a specific slot can override a general one without having to carve up the general rule.
 
-> **Jellyfin has no localisation framework for plugins.** It doesn't expose its `Globalize` module to plugin pages either — only `ApiClient`, `Dashboard` and `Emby` are on `window`. So the translations are served and applied by the plugin itself, following the pattern used across the community.
+### Libraries
 
-How it fits together:
-
-1. **`Locale/en.json`, `Locale/es.json`** — flat key/value files, embedded as resources.
-2. **`Plugin.GetPages()`** registers one entry per language alongside the config page. That's the only way to expose a plugin's own files over HTTP without writing an API controller. They end up served at `web/ConfigurationPage?name=scheduledaccess.<lang>.json`, with `Content-Type: application/json`.
-3. **`data-localize` attributes** in the HTML, whose text is the **English fallback**. If the fetch fails, the page stays in readable English instead of showing raw keys.
-4. **Language detection** mirrors what jellyfin-web does: read the user's explicit choice from `DisplayPreferences.CustomPrefs.language`, and fall back to `navigator.language` when it isn't set — which is the common case, since the setting is only stored once the user picks a language by hand.
-
-### Adding a language
-
-1. Copy `Locale/en.json` to `Locale/<code>.json` and translate the values.
-2. Add the code to `Plugin.SupportedLanguages` **and** to the `SUPPORTED` array in `configPage.html`. Both lists must agree.
-
-The `csproj` globs `Locale\*.json`, so no build change is needed.
+A rule can also limit which libraries are visible while it's active. The two filters combine: you can restrict to one library **and** filter by tags inside it. Leaving every library unchecked means library access isn't touched at all.
 
 ---
 
-## Development
+## Known limitations
 
-### Building
-
-```bash
-dotnet publish --configuration Debug Jellyfin.Plugin.ScheduledAccess.sln
-```
-
-The project builds with `TreatWarningsAsErrors` and every analyzer enabled (`AnalysisMode=AllEnabledByDefault` + StyleCop + `jellyfin.ruleset`). Any warning breaks the build; that's intentional.
-
-Two rules that bite when writing configuration types:
-
-- **SA1402 / SA1649**: one class per file, and the file name must match. An `enum` may accompany a class.
-- **CA1819** (don't expose arrays in properties) is **not disabled** in the ruleset. The configuration types **use arrays anyway**, with a narrow documented suppression: they must round-trip through `XmlSerializer` (config on disk) and `System.Text.Json` (the web page), and read-only collections aren't reliable with the latter. Silently losing rules on save would be worse than the design smell.
-
-### Deploying locally
-
-VS Code tasks (`Ctrl+Shift+P → Tasks: Run Task`):
-
-| Task | What it does |
-|---|---|
-| **`deploy`** | Builds and deploys. The one you'll normally use (also `Ctrl+Shift+B`) |
-| **`build`** | Builds only — no deploy, no UAC prompt |
-| **`tail-log`** | Follows the server log live |
-| **`tail-log-plugin`** | Same, filtered to the plugin's lines |
-
-`Ctrl+Shift+B` is a shortcut to `deploy`, as the default build task. Both log tasks keep running until you stop them from the terminal panel.
-
-The logic lives in [scripts/deploy-local.ps1](scripts/deploy-local.ps1), which you can also run by hand. It groups **stop → copy → permissions → start into a single elevation**, for two reasons:
-
-1. Jellyfin keeps the DLL locked while running; copying with the service up fails with `IOException`.
-2. Stopping and starting a service requires administrator rights. Grouping avoids chaining several UAC prompts.
-
-**Accepting the UAC prompt is manual.** There's no way around it with Jellyfin installed as a service.
-
-> **`meta.json` must carry the assembly's real version.** The script reads it from the freshly built binary instead of hardcoding it, and that's not cosmetic.
->
-> Jellyfin **registers** the plugin by the manifest version, but the dashboard **displays and sends** the assembly version. If they diverge, `DELETE /Plugins/{guid}/{version}` returns **404**: it's looking for a version it has no record of. The symptom misleads, because the plugin loads and works fine; what breaks is uninstalling or updating from the dashboard.
->
-> This happened when only the build output was copied: the DLL got updated while `meta.json` kept the version from the first deploy. You spot it by comparing the startup log against the dashboard:
->
-> ```
-> Loaded assembly "...Version=1.0.0.0..."      ← the assembly
-> Loaded plugin: "Scheduled Access" "0.0.0.0"  ← the manifest: they don't match
-> ```
-
-The `.pdb` is copied too: that's what enables breakpoints.
-
-> **Why the task runs `icacls` at the end.** Because of Windows' `CREATOR OWNER` rule, the plugin folder ends up owned by whoever creates it — you, when deploying. The service runs as `NT AUTHORITY\NETWORK SERVICE` and only inherits `BUILTIN\Users:(RX)`: read and execute, **no delete permission**.
->
-> The symptom is deceptive, because the plugin **loads without trouble**. What fails is **uninstalling or updating from the dashboard**: the service can't delete files it doesn't own. Diagnose by comparing the ACLs:
->
-> ```powershell
-> icacls "$env:ProgramData\Jellyfin\Server\plugins"
-> icacls "$env:ProgramData\Jellyfin\Server\plugins\Jellyfin.Plugin.ScheduledAccess"
-> ```
->
-> If `NETWORK SERVICE` is missing from the second one, this is it. Fix with:
->
-> ```powershell
-> icacls "<plugin folder>" /grant "NT AUTHORITY\NETWORK SERVICE:(OI)(CI)F" /T
-> ```
->
-> Plugins installed from a repository don't suffer from this: the service creates them, so it already owns them.
-
-Paths are configured in [.vscode/settings.json](.vscode/settings.json). `jellyfinDataDir` must point at the server's **actual** data dir, which depends on the install mode:
-
-| Installation | Data dir |
-|---|---|
-| Windows service | `C:\ProgramData\Jellyfin\Server` |
-| Tray / user app | `%LOCALAPPDATA%\jellyfin` |
-
-To confirm it without guessing, read the service's actual parameters:
-
-```powershell
-Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\JellyfinServer\Parameters" |
-    Select-Object Application, AppParameters
-```
-
-### Debugging
-
-**Rule out first: has the task run since you saved?** Saving queues it automatically, but if you edited the XML by hand, or queuing failed, nothing has been applied. It's the most common cause of "it doesn't work".
-
-Three places to look, in order:
-
-**1. The configuration XML** — tells you what was saved and what was applied:
-
-```powershell
-Get-Content "C:\ProgramData\Jellyfin\Server\plugins\configurations\Jellyfin.Plugin.ScheduledAccess.xml" -Raw
-```
-
-An empty `<Snapshots />` means **no restriction was ever applied**. If there's a `<PolicySnapshot>`, the plugin has already touched that user's policy.
-
-**2. The server log** — the task records every action:
-
-```powershell
-$log = Get-ChildItem "C:\ProgramData\Jellyfin\Server\log" -Filter "log_*.log" |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
-Select-String -Path $log.FullName -Pattern "Restriction applied|Policy snapshot|Policy restored"
-```
-
-Expected output:
-
-```
-ApplyTagScheduleTask: Policy snapshot saved for "test" (allowed=0, blocked=0)
-ApplyTagScheduleTask: Restriction applied to "test" for Sunday in AllowOnly mode with 1 tags
-```
-
-**3. The user's policy** under Dashboard → Users → *(user)* → Parental Control, to see the tags the plugin wrote.
-
-After applying, **refresh the client or sign in again**: the web UI caches views and may keep showing the old content.
-
-#### Breakpoints
-
-The server is an official binary, not built from source, so debugging is by **attach**, not launch: run `deploy`, wait for startup, then launch *Adjuntar a Jellyfin* ([.vscode/launch.json](.vscode/launch.json)).
-
-Since the service runs as `NT Authority\NetworkService`, **VS Code must be started as administrator** to attach.
-
----
-
-## Deploying to a real server (Docker)
-
-### 1. Package
-
-```powershell
-.\scripts\package.ps1
-```
-
-Builds in **Release** and leaves `dist/Jellyfin.Plugin.ScheduledAccess/` with just the DLL and a complete `meta.json`. It deliberately excludes the `.pdb` (debug symbols), the `.xml` (documentation) and the `.deps.json`: the server doesn't need them to load a plugin.
-
-`meta.json` is written by hand because the one Jellyfin generates on a hot install leaves `version: 0.0.0.0` and the descriptive fields empty. Its `targetAbi` is `10.11.0.0`, not `10.11.11.0`, so it covers the whole 10.11.x series rather than a single patch.
-
-> **The ABI must match the target server.** A plugin built against 10.11 won't load on 10.10: it shows as *NotSupported*. The DLL is pure IL, so architecture (x86_64, ARM) is irrelevant — only the version matters.
-
-### 2. Locate the config volume
-
-The plugin goes in `<config>/plugins/`, where `<config>` is the host path mapped to `/config` in the container:
-
-```bash
-docker inspect -f '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' jellyfin
-```
-
-### 3. Copy and fix ownership
-
-```bash
-scp -r dist/Jellyfin.Plugin.ScheduledAccess user@server:/tmp/
-
-# on the server, with <config> replaced by the real path
-sudo mv /tmp/Jellyfin.Plugin.ScheduledAccess <config>/plugins/
-```
-
-**Ownership must match the user running inside the container**, or the plugin won't be read. Instead of guessing the UID, copy it from a folder Jellyfin already uses:
-
-```bash
-sudo chown -R --reference=<config>/config <config>/plugins/Jellyfin.Plugin.ScheduledAccess
-sudo chmod -R u+rwX,go+rX <config>/plugins/Jellyfin.Plugin.ScheduledAccess
-```
-
-> **Careful with `PUID`/`PGID`.** They're a **linuxserver.io** convention. The **official** `jellyfin/jellyfin` image ignores them entirely: the user is controlled by the compose `user:` key, and without it the container runs as **root**. A `docker-compose.yml` using the official image with `PUID=1000` is misleading — those variables do nothing, and running `chown 1000` would be exactly the wrong move.
-
-### Time zone
-
-The plugin decides the day with `DateTime.Now.DayOfWeek`, which is the **container's local time**. Set `TZ` in the compose file:
-
-```yaml
-environment:
-  - TZ=America/Mexico_City
-```
-
-Without `TZ` the container runs in UTC and the day change happens offset from your real schedule — "Sunday" would start and end at the wrong hour.
-
-### 4. Restart and verify
-
-```bash
-docker restart jellyfin
-docker logs jellyfin 2>&1 | grep -i scheduledaccess
-```
-
-Expected output:
-
-```
-Loaded assembly "Jellyfin.Plugin.ScheduledAccess, Version=1.0.0.0, ..."
-Loaded plugin: "Scheduled Access" "1.0.0.0"
-```
-
-If nothing shows up, suspect in this order: file ownership → incompatible `targetAbi` → wrong path (the mapped volume isn't the one you thought).
-
----
-
-## Publishing a release
-
-Jellyfin has no store and no approval process: **a plugin repository is just a URL to a JSON file**. Users add it under *Dashboard → Plugins → Repositories* and your plugins show up.
-
-Users install by adding this URL:
-
-```
-https://raw.githubusercontent.com/<owner>/<repo>/main/manifest.json
-```
-
-### Automatic publishing
-
-```bash
-git tag v1.0.0.0
-git push origin v1.0.0.0
-```
-
-The [.github/workflows/release.yml](.github/workflows/release.yml) workflow builds, publishes the zip to Releases, computes the checksum and commits the updated `manifest.json` to `main`. The version comes **from the tag**, and propagates from there to the assembly, `meta.json`, the zip name and the manifest, so they can't drift apart.
-
-Order matters: the zip is uploaded **before** the manifest is committed, because the `sourceUrl` it contains must already exist when someone reads it.
-
-### Manual publishing
-
-```powershell
-.\scripts\package.ps1 -Version 1.2.0.0 -Changelog "What changed"
-```
-
-Generates the zip in `dist/`, updates `manifest.json`, and you upload the zip to the matching release.
-
-> **The zip is not reproducible**: it embeds timestamps, so every build yields a different MD5. If you re-run the script after uploading the zip, the manifest checksum will no longer match the published binary and the server will reject the download. Upload **exactly** the zip from the run that generated the manifest. This can't happen in CI because both come from the same run.
-
-### Format details that take a while to discover
-
-- The **checksum is the zip's MD5**, lowercase. The server validates the download against it; if it doesn't match, the error the user sees doesn't explain why.
-- The zip holds its files **at the root**, not inside a subfolder: Jellyfin extracts it straight into the plugin directory.
-- JSON files are written **without a BOM**. `Out-File -Encoding utf8` on Windows PowerShell 5.1 adds one, which breaks both `ConvertFrom-Json` on re-read and anything consuming the manifest.
-- The manifest must **always be an array**, even for a single plugin.
-- The `guid` must be unique across the ecosystem, and **must match** `Plugin.Id` in the code.
-
-### Licence obligation
-
-The binary links against GPLv3 packages, so **it is GPLv3**. Distributing it requires publishing the source: the repository must be **public**.
-
----
-
-## Native alternative: you may not need this plugin
-
-Jellyfin already ships day-of-week restriction, no plugin required: `UserPolicy.AccessSchedules`, under **Users → *(user)* → Access Schedule**.
-
-```
-AccessSchedule:   DayOfWeek (DynamicDayOfWeek), StartHour, EndHour
-DynamicDayOfWeek: Sunday=0 … Saturday=6, Everyday=7, Weekday=8, Weekend=9
-```
-
-**If what you want is to stop someone signing in on Sundays, or outside certain hours, use that and forget this plugin.** It's all-or-nothing: it blocks the whole session and doesn't distinguish between libraries or tags.
-
-This plugin only adds value when the user **should** be able to sign in that day, but see a subset of the content.
-
----
-
-## Status and known limitations
-
-- **The scheduled task name is English-only.** Jellyfin exposes a task's name as a single server-wide string, not per user, so it can't be localised. The configuration page *is* localised — see below.
 - **Rules apply to administrator accounts too** (verified on 10.11.11). Unlike other Jellyfin parental controls, tag filtering doesn't exempt admins: if you apply a rule to yourself, you'll see the same trimmed library as anyone else. Be careful not to lock yourself out of content you need.
-- The version shown by the plugin manager reads `0.0.0.0` on manual installs, because it comes from the manifest rather than the assembly. Cosmetic, and only during development.
 - Overlapping slots resolve by "shortest wins", but the configuration page doesn't warn you when they overlap. You have to reason about it yourself.
-- **Snapshots taken before library support restore tags only.** They carry no library state, and applying their defaults would strip the user's access to everything, so the plugin deliberately leaves libraries untouched for those and logs a warning. A snapshot taken after upgrading covers both.
-- There's no test project. The slot logic — midnight wrapping, overlaps, boundary maths — was verified by exercising it externally, not by tests that run on every build.
+- The plugin does **not** hide content the user has already watched. It schedules by day, time, tag and library only.
+- The scheduled task name appears in English regardless of your language. Jellyfin exposes a task's name as a single server-wide string, not per user, so it can't be localised. The configuration page itself is localised (English and Spanish).
+
+---
+
+## Documentation
+
+Architecture, local development, debugging, Docker deployment and the release process are in **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
 
 ## Licence
 
