@@ -1,0 +1,75 @@
+name: release
+
+# Se dispara al empujar un tag de version: git tag v1.0.0.0 && git push --tags
+# El tag manda: de el sale la version del ensamblado, del meta.json, del zip
+# y de la entrada del manifiesto, para que no puedan desincronizarse.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  # Necesario para crear el release y para devolver el manifest.json a main.
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Se clona main, no el tag: el manifest.json actualizado hay que
+          # confirmarlo en la rama, y desde un tag el HEAD estaria separado.
+          ref: main
+          fetch-depth: 0
+
+      - name: Configurar .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Derivar version del tag
+        id: version
+        run: |
+          # refs/tags/v1.0.0.0 -> 1.0.0.0
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION"
+
+      - name: Empaquetar
+        shell: pwsh
+        # Se reutiliza el mismo script que se usa en local: una sola fuente de
+        # verdad para el empaquetado y el calculo del checksum.
+        run: |
+          ./scripts/package.ps1 `
+            -Version '${{ steps.version.outputs.version }}' `
+            -Repo '${{ github.repository }}' `
+            -Changelog 'Ver el release ${{ github.ref_name }} para los detalles.'
+
+      - name: Publicar el release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # El zip se sube ANTES de confirmar el manifiesto: la sourceUrl que
+        # este contiene debe existir ya cuando alguien lea el manifiesto.
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            "dist/scheduled-access_${{ steps.version.outputs.version }}.zip"
+
+      - name: Confirmar el manifiesto en main
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # Si el manifiesto no cambio (reejecucion del workflow), no fallar.
+          if git diff --quiet -- manifest.json; then
+            echo "manifest.json sin cambios"
+            exit 0
+          fi
+
+          git add manifest.json
+          git commit -m "Publicar ${GITHUB_REF_NAME} en el manifiesto"
+          git push origin main

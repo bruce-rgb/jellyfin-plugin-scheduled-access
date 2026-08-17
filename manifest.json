@@ -1,0 +1,21 @@
+[
+    {
+        "guid":  "65e8ae1e-ea44-4b8c-a2c7-16f46a158eb4",
+        "name":  "Scheduled Access",
+        "description":  "Restringe que contenido ve cada usuario segun el dia de la semana, usando las etiquetas de la biblioteca.",
+        "overview":  "Restricciones de contenido por dia de la semana",
+        "owner":  "bruce-rgb",
+        "category":  "General",
+        "imageUrl":  "",
+        "versions":  [
+                         {
+                             "version":  "1.0.0.0",
+                             "changelog":  "Version inicial.",
+                             "targetAbi":  "10.11.0.0",
+                             "sourceUrl":  "https://github.com/bruce-rgb/jellyfin-plugin-scheduled-access/releases/download/v1.0.0.0/scheduled-access_1.0.0.0.zip",
+                             "checksum":  "5e70c724dc585f9a126f0d166ab71936",
+                             "timestamp":  "2026-08-17 06:30:35"
+                         }
+                     ]
+    }
+]

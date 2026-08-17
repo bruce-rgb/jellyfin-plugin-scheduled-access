@@ -296,6 +296,51 @@ Si no aparece nada, el orden de sospechas es: permisos del archivo → `targetAb
 
 ---
 
+## Publicar una versión
+
+En Jellyfin no hay tienda ni proceso de aprobación: **un repositorio de plugins es solo una URL a un JSON**. El usuario la añade en *Panel de control → Complementos → Repositorios* y ya ve tus plugins.
+
+Los usuarios instalan añadiendo esta URL:
+
+```
+https://raw.githubusercontent.com/<owner>/<repo>/main/manifest.json
+```
+
+### Publicar automáticamente
+
+```bash
+git tag v1.0.0.0
+git push origin v1.0.0.0
+```
+
+El workflow [.github/workflows/release.yml](.github/workflows/release.yml) compila, publica el zip en Releases, calcula el checksum y confirma el `manifest.json` actualizado en `main`. La versión sale **del tag**, y de ahí se propaga al ensamblado, al `meta.json`, al nombre del zip y al manifiesto, de modo que no puedan desincronizarse.
+
+El orden importa: el zip se sube **antes** de confirmar el manifiesto, porque la `sourceUrl` que este contiene debe existir ya cuando alguien lo lea.
+
+### Publicar a mano
+
+```powershell
+.\scripts\package.ps1 -Version 1.2.0.0 -Changelog "Que cambio"
+```
+
+Genera el zip en `dist/`, actualiza `manifest.json`, y tú subes el zip al release correspondiente.
+
+> **El zip no es reproducible**: lleva marcas de tiempo, así que cada compilación produce un MD5 distinto. Si reejecutas el script después de haber subido el zip, el checksum del manifiesto dejará de coincidir con el binario publicado y el servidor rechazará la descarga. Sube **exactamente** el zip de la ejecución que generó el manifiesto. En CI esto no pasa porque ambos salen de la misma ejecución.
+
+### Detalles del formato que cuestan un rato descubrir
+
+- El **checksum es MD5** del zip, en minúsculas. Es lo que valida el servidor al descargar; si no cuadra, el error que ve el usuario no explica la causa.
+- El zip lleva los archivos **en la raíz**, no dentro de una subcarpeta: Jellyfin lo extrae directamente sobre el directorio del plugin.
+- Los JSON se escriben **sin BOM**. `Out-File -Encoding utf8` en Windows PowerShell 5.1 lo añade, y rompe tanto a `ConvertFrom-Json` al releer como a quien consuma el manifiesto.
+- El manifiesto debe ser **siempre un array**, aunque publiques un solo plugin.
+- El `guid` tiene que ser único en todo el ecosistema, y **debe coincidir** con el `Plugin.Id` del código.
+
+### Obligación de licencia
+
+El binario enlaza contra paquetes GPLv3, así que **es GPLv3**. Distribuirlo obliga a publicar el código: el repositorio tiene que ser **público**.
+
+---
+
 ## Alternativa nativa: no siempre hace falta este plugin
 
 Jellyfin ya trae restricción por día de la semana, sin plugins: `UserPolicy.AccessSchedules`, en **Usuarios → *(usuario)* → Horario de acceso**.
