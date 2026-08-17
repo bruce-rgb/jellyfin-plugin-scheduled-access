@@ -1,6 +1,7 @@
 {
   "AddRule": "Add rule",
   "Days": "Days",
+  "From": "From",
   "EnableDescription": "While disabled, the next task run restores every affected user's original tags.",
   "EnableLabel": "Enable day-of-week restrictions",
   "FriShort": "Fri",
@@ -17,6 +18,9 @@
   "Tags": "Tags (comma separated)",
   "TagsDescription": "In \"show only\" mode, anything without one of these tags is hidden.",
   "ThuShort": "Thu",
+  "TimeSlot": "Time slot",
+  "TimeSlotDescription": "Leave both at 00:00 to cover the whole day. If the end is earlier than the start the slot runs past midnight, and the checked day is the one it starts on. When slots overlap, the shortest one wins.",
+  "To": "To",
   "TueShort": "Tue",
   "User": "User",
   "WedShort": "Wed"

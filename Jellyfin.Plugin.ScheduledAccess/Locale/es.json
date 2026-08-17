@@ -1,6 +1,7 @@
 {
   "AddRule": "Añadir regla",
   "Days": "Días",
+  "From": "Desde",
   "EnableDescription": "Mientras esté desactivado, la siguiente ejecución de la tarea restaura las etiquetas originales de todos los usuarios afectados.",
   "EnableLabel": "Activar restricciones por día",
   "FriShort": "Vie",
@@ -17,6 +18,9 @@
   "Tags": "Etiquetas (separadas por comas)",
   "TagsDescription": "En modo «mostrar únicamente», todo lo que no lleve alguna de estas etiquetas se oculta.",
   "ThuShort": "Jue",
+  "TimeSlot": "Franja horaria",
+  "TimeSlotDescription": "Deja ambas en 00:00 para cubrir el día entero. Si el fin es anterior al inicio, la franja cruza la medianoche, y el día marcado es aquel en que empieza. Cuando dos franjas se solapan, gana la más corta.",
+  "To": "Hasta",
   "TueShort": "Mar",
   "User": "Usuario",
   "WedShort": "Mié"

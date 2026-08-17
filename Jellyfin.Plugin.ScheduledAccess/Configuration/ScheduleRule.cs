@@ -11,10 +11,15 @@ namespace Jellyfin.Plugin.ScheduledAccess.Configuration;
 #pragma warning disable CA1819
 
 /// <summary>
-/// Regla que restringe a un usuario en ciertos dias de la semana.
+/// Regla que restringe a un usuario en ciertos dias y en una franja horaria.
 /// </summary>
 public class ScheduleRule
 {
+    /// <summary>
+    /// Minutos que tiene un dia. Una franja de 0 a este valor cubre el dia entero.
+    /// </summary>
+    public const int MinutesPerDay = 1440;
+
     /// <summary>
     /// Gets or sets el id del usuario afectado.
     /// </summary>
@@ -26,8 +31,32 @@ public class ScheduleRule
     public TagFilterMode Mode { get; set; }
 
     /// <summary>
+    /// Gets or sets el inicio de la franja, en minutos desde medianoche.
+    /// </summary>
+    /// <remarks>
+    /// Se usan minutos y no horas decimales para que los limites sean exactos
+    /// y para que encajen directamente con un &lt;input type="time"&gt;.
+    /// </remarks>
+    public int StartMinutes { get; set; }
+
+    /// <summary>
+    /// Gets or sets el fin de la franja, en minutos desde medianoche (exclusivo).
+    /// </summary>
+    /// <remarks>
+    /// El valor inicial cubre el dia entero a proposito: las reglas guardadas
+    /// por versiones anteriores no llevan este elemento en el XML, y
+    /// XmlSerializer deja intacto lo que no aparece. Asi una regla antigua
+    /// sigue aplicando todo el dia en vez de no aplicar nunca.
+    /// </remarks>
+    public int EndMinutes { get; set; } = MinutesPerDay;
+
+    /// <summary>
     /// Gets or sets los dias de la semana en los que aplica la restriccion.
     /// </summary>
+    /// <remarks>
+    /// En una franja que cruza medianoche, el dia se refiere al de INICIO:
+    /// una regla de domingo 22:00 a 06:00 sigue activa el lunes a las 02:00.
+    /// </remarks>
     public DayOfWeek[] Days { get; set; } = Array.Empty<DayOfWeek>();
 
     /// <summary>

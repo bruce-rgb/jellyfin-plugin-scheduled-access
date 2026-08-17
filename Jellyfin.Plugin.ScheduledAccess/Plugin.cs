@@ -16,20 +16,22 @@ namespace Jellyfin.Plugin.ScheduledAccess;
 /// </summary>
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
-    private readonly ITaskManager _taskManager;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="Plugin"/> class.
     /// </summary>
     /// <param name="applicationPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
     /// <param name="xmlSerializer">Instance of the <see cref="IXmlSerializer"/> interface.</param>
-    /// <param name="taskManager">Instance of the <see cref="ITaskManager"/> interface.</param>
-    public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ITaskManager taskManager)
+    public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
-        _taskManager = taskManager;
     }
+
+    /// <summary>
+    /// Raised after the configuration is saved, so the schedule watcher can
+    /// re-evaluate immediately instead of waiting for its next wake-up.
+    /// </summary>
+    public static event EventHandler? ConfigurationUpdated;
 
     /// <inheritdoc />
     public override string Name => "Scheduled Access";
@@ -57,9 +59,9 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// <inheritdoc />
     /// <remarks>
     /// Guardar la configuracion no aplica nada por si solo: quien reescribe las
-    /// politicas de usuario es la tarea programada. Encolarla aqui hace que un
-    /// cambio de reglas surta efecto de inmediato, en vez de esperar al
-    /// siguiente disparador (medianoche o la comprobacion horaria).
+    /// politicas de usuario es el vigilante de franjas. Avisarle aqui hace que
+    /// un cambio de reglas surta efecto de inmediato, en vez de esperar a su
+    /// siguiente despertar, que puede estar horas por delante.
     /// </remarks>
     public override void UpdateConfiguration(BasePluginConfiguration configuration)
     {
@@ -78,9 +80,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 
         base.UpdateConfiguration(configuration);
 
-        // Si ya se esta ejecutando, la que corre leera igualmente la config
-        // recien guardada, asi que no hace falta reencolar.
-        _taskManager.QueueIfNotRunning<ApplyTagScheduleTask>();
+        ConfigurationUpdated?.Invoke(this, EventArgs.Empty);
     }
 
     /// <inheritdoc />

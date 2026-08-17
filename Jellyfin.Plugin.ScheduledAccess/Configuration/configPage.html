@@ -131,6 +131,23 @@
                     return mode || 'Block';
                 }
 
+                // <input type="time"> no admite 24:00, asi que el fin de dia se
+                // representa como 00:00. No hay ambiguedad: el servidor trata
+                // inicio == fin como dia completo, y 08:00-00:00 como "de las
+                // ocho a medianoche", porque la franja cruza el limite del dia.
+                function minutesToTime(value) {
+                    var m = Math.max(0, Math.min(1440, parseInt(value, 10) || 0)) % 1440;
+                    var h = Math.floor(m / 60);
+                    return (h < 10 ? '0' : '') + h + ':' + ((m % 60) < 10 ? '0' : '') + (m % 60);
+                }
+
+                function timeToMinutes(value) {
+                    var parts = String(value || '00:00').split(':');
+                    var h = parseInt(parts[0], 10) || 0;
+                    var m = parseInt(parts[1], 10) || 0;
+                    return Math.max(0, Math.min(1439, (h * 60) + m));
+                }
+
                 function renderRule(rule) {
                     var row = document.createElement('div');
                     row.className = 'ScheduledAccessRule';
@@ -157,6 +174,22 @@
                             '<select is="emby-select" class="ruleUser emby-select-withcolor emby-select">' + userOptions + '</select>' +
                         '</div>' +
                         '<div style="margin:.5em 0 1em 0;">' + dayBoxes + '</div>' +
+                        '<div class="inputContainer">' +
+                            '<label class="inputLabel inputLabelUnfocused" data-localize="TimeSlot">Time slot</label>' +
+                            '<div style="display:flex;gap:1em;align-items:center;">' +
+                                '<span data-localize="From">From</span>' +
+                                '<input type="time" is="emby-input" class="ruleStart" style="width:auto;" value="' +
+                                    minutesToTime(rule.StartMinutes) + '" />' +
+                                '<span data-localize="To">To</span>' +
+                                '<input type="time" is="emby-input" class="ruleEnd" style="width:auto;" value="' +
+                                    minutesToTime(rule.EndMinutes) + '" />' +
+                            '</div>' +
+                            '<div class="fieldDescription" data-localize="TimeSlotDescription">' +
+                                'Leave both at 00:00 to cover the whole day. If the end is earlier than the start ' +
+                                'the slot runs past midnight, and the checked day is the one it starts on. ' +
+                                'When slots overlap, the shortest one wins.' +
+                            '</div>' +
+                        '</div>' +
                         '<div class="selectContainer">' +
                             '<label class="selectLabel" data-localize="Mode">Mode</label>' +
                             '<select is="emby-select" class="ruleMode emby-select-withcolor emby-select">' +
@@ -198,6 +231,8 @@
                             return {
                                 UserId: row.querySelector('.ruleUser').value,
                                 Mode: row.querySelector('.ruleMode').value,
+                                StartMinutes: timeToMinutes(row.querySelector('.ruleStart').value),
+                                EndMinutes: timeToMinutes(row.querySelector('.ruleEnd').value),
                                 Days: days,
                                 Tags: tags
                             };
@@ -232,7 +267,14 @@
                     if (!users.length) {
                         return;
                     }
-                    renderRule({ UserId: users[0].Id, Mode: 'Block', Days: [], Tags: [] });
+                    renderRule({
+                        UserId: users[0].Id,
+                        Mode: 'Block',
+                        StartMinutes: 0,
+                        EndMinutes: 0,
+                        Days: [],
+                        Tags: []
+                    });
                 });
 
                 page.querySelector('#ScheduledAccessConfigForm').addEventListener('submit', function (e) {
