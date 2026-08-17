@@ -1,29 +1,29 @@
 [
-  {
-    "guid": "65e8ae1e-ea44-4b8c-a2c7-16f46a158eb4",
-    "name": "Scheduled Access",
-    "description": "Restringe que contenido ve cada usuario segun el dia de la semana, usando las etiquetas de la biblioteca.",
-    "overview": "Restricciones de contenido por dia de la semana",
-    "owner": "bruce-rgb",
-    "category": "General",
-    "imageUrl": "",
-    "versions": [
-      {
-        "version": "1.1.0.0",
-        "changelog": "Ver el release v1.1.0.0 para los detalles.",
-        "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://github.com/bruce-rgb/jellyfin-plugin-scheduled-access/releases/download/v1.1.0.0/scheduled-access_1.1.0.0.zip",
-        "checksum": "88ac518618bea0b411b3ecb7dad3b434",
-        "timestamp": "2026-08-17 16:50:49"
-      },
-      {
-        "version": "1.0.0.0",
-        "changelog": "Ver el release v1.0.0.0 para los detalles.",
-        "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://github.com/bruce-rgb/jellyfin-plugin-scheduled-access/releases/download/v1.0.0.0/scheduled-access_1.0.0.0.zip",
-        "checksum": "7ef9bd1aaa9f432319127ec129d34136",
-        "timestamp": "2026-08-17 07:00:19"
-      }
-    ]
-  }
+    {
+        "guid":  "65e8ae1e-ea44-4b8c-a2c7-16f46a158eb4",
+        "name":  "Scheduled Access",
+        "description":  "Restringe que contenido ve cada usuario segun el dia de la semana, usando las etiquetas de la biblioteca.",
+        "overview":  "Restricciones de contenido por dia de la semana",
+        "owner":  "bruce-rgb",
+        "category":  "General",
+        "imageUrl":  "",
+        "versions":  [
+                         {
+                             "version":  "1.1.0.0",
+                             "changelog":  "### Added\n- The configuration page is localised in English and Spanish, following the\n  language chosen in Jellyfin and falling back to the browser\u0027s.\n- Saving the configuration now applies the rules within seconds instead of\n  waiting for the next scheduled run.\n\n### Fixed\n- Deleting a rule left the user restricted forever. Restoration is now driven\n  by the saved snapshots rather than by the rules, so removing a rule undoes\n  its restriction.\n- Saving the configuration page could destroy the record of a user\u0027s original\n  policy, after which \"restoring\" returned them to the restricted state. The\n  server no longer accepts that state from the browser.\n- Uninstalling or updating from the dashboard failed with a 404 when the\n  plugin\u0027s manifest version did not match the assembly version.\n\n### Changed\n- The scheduled task and log messages are in English. A task name is a single\n  server-wide string in Jellyfin, so it cannot be localised per user.",
+                             "targetAbi":  "10.11.0.0",
+                             "sourceUrl":  "https://github.com/bruce-rgb/jellyfin-plugin-scheduled-access/releases/download/v1.1.0.0/scheduled-access_1.1.0.0.zip",
+                             "checksum":  "88ac518618bea0b411b3ecb7dad3b434",
+                             "timestamp":  "2026-08-17 16:50:49"
+                         },
+                         {
+                             "version":  "1.0.0.0",
+                             "changelog":  "### Added\n- First release. Restrict what a user can see based on the day of the week,\n  using library tags.\n- Two filter modes: hide content carrying the listed tags, or show only\n  content carrying them.\n- The original policy of every affected user is saved before the first\n  restriction and restored when no rule applies, so restrictions are always\n  reversible — even if the server is shut down while one is in force.",
+                             "targetAbi":  "10.11.0.0",
+                             "sourceUrl":  "https://github.com/bruce-rgb/jellyfin-plugin-scheduled-access/releases/download/v1.0.0.0/scheduled-access_1.0.0.0.zip",
+                             "checksum":  "7ef9bd1aaa9f432319127ec129d34136",
+                             "timestamp":  "2026-08-17 07:00:19"
+                         }
+                     ]
+    }
 ]

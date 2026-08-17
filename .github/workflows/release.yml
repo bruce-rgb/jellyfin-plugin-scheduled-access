@@ -43,15 +43,26 @@ jobs:
         # que uno que no llega a publicarse.
         run: dotnet test --configuration Release --nologo
 
+      - name: Extraer las notas de la version
+        shell: pwsh
+        # Un unico texto escrito a mano alimenta el historial de versiones que
+        # Jellyfin muestra en la pagina del plugin y el cuerpo del release.
+        # El script falla si la version no tiene seccion, que es preferible a
+        # publicarla con notas vacias o de otra version.
+        run: |
+          ./scripts/get-changelog.ps1 -Version '${{ steps.version.outputs.version }}' |
+            Set-Content '${{ runner.temp }}/release-notes.md' -Encoding utf8
+
       - name: Empaquetar
         shell: pwsh
         # Se reutiliza el mismo script que se usa en local: una sola fuente de
         # verdad para el empaquetado y el calculo del checksum.
         run: |
+          $notes = Get-Content '${{ runner.temp }}/release-notes.md' -Raw
           ./scripts/package.ps1 `
             -Version '${{ steps.version.outputs.version }}' `
             -Repo '${{ github.repository }}' `
-            -Changelog 'Ver el release ${{ github.ref_name }} para los detalles.'
+            -Changelog $notes
 
       - name: Publicar el release
         env:
@@ -61,7 +72,7 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
+            --notes-file "${RUNNER_TEMP}/release-notes.md" \
             "dist/scheduled-access_${{ steps.version.outputs.version }}.zip"
 
       - name: Confirmar el manifiesto en main

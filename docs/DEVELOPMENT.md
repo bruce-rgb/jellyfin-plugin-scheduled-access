@@ -440,6 +440,17 @@ If nothing shows up, suspect in this order: file ownership → incompatible `tar
 
 Jellyfin has no store and no approval process: **a plugin repository is just a URL to a JSON file**. Users add it under *Dashboard → Plugins → Repositories* and your plugins show up.
 
+### Write the notes first
+
+[`CHANGELOG.md`](../CHANGELOG.md) is the single source for release notes. The workflow extracts the section matching the tag and uses it in **both** places users look:
+
+- the `changelog` field of the manifest, which is the **version history shown on the plugin's page inside Jellyfin**
+- the body of the GitHub release
+
+Add a `## <version>` section before tagging. The extraction fails loudly if it's missing — publishing a version with empty notes, or with another version's, is worse than a failed build.
+
+Write it for the person installing the plugin. Jellyfin renders bullet lists and light markdown, matching what the official plugin manifest does.
+
 ### Automatic publishing
 
 ```bash
