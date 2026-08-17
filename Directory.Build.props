@@ -1,8 +1,10 @@
 <Project>
     <PropertyGroup>
-        <!-- Debe coincidir con la version declarada en build.yaml -->
-        <Version>1.0.0.0</Version>
-        <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>1.0.0.0</FileVersion>
+        <!-- Version por defecto para compilaciones locales. En los releases
+             manda el tag: el workflow se la pasa al compilador, asi que este
+             valor solo afecta a lo que despliegues a mano mientras desarrollas. -->
+        <Version>1.1.0.0</Version>
+        <AssemblyVersion>1.1.0.0</AssemblyVersion>
+        <FileVersion>1.1.0.0</FileVersion>
     </PropertyGroup>
 </Project>

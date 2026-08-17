@@ -116,18 +116,18 @@ if (configuration is PluginConfiguration incoming)
 
 Without this, the config page reads them when it opens and sends them back on save. If the task created a snapshot after the page loaded, saving deletes it; the next run finds none and takes a fresh one **against the already-restricted policy**, recording the restricted state as if it were the original.
 
-The symptom is treacherous: the log reports `Politica restaurada` perfectly normally, but restores to the corrupted state and the user stays restricted. You spot it in the log as a second snapshot for the same user with a non-zero count:
+The symptom is treacherous: the log reports `Policy restored` perfectly normally, but restores to the corrupted state and the user stays restricted. You spot it in the log as a second snapshot for the same user with a non-zero count:
 
 ```
-Instantanea de politica guardada para "test" (permitidas=0, ...)   ← correct original
-Instantanea de politica guardada para "test" (permitidas=1, ...)   ← corrupt: captured the restricted state
+Policy snapshot saved for "test" (allowed=0, ...)   ← correct original
+Policy snapshot saved for "test" (allowed=1, ...)   ← corrupt: captured the restricted state
 ```
 
 If this happens the original data is lost, and the tags must be cleared by hand under **Users → *(user)* → Parental Control**.
 
 ### Triggers
 
-The `Aplicar restricciones por dia` task runs at three moments:
+The `Apply day-of-week restrictions` task runs at three moments:
 
 | Trigger | Purpose |
 |---|---|
@@ -163,7 +163,7 @@ public override void UpdateConfiguration(BasePluginConfiguration configuration)
 
 > After it applies, **refresh the client or sign out and back in**: the web UI caches views and may keep showing the previous content even though the policy already changed.
 
-You can also run it manually from **Dashboard → Scheduled Tasks → Aplicar restricciones por dia**.
+You can also run it manually from **Dashboard → Scheduled Tasks → Apply day-of-week restrictions**.
 
 ---
 
@@ -287,14 +287,14 @@ An empty `<Snapshots />` means **no restriction was ever applied**. If there's a
 ```powershell
 $log = Get-ChildItem "C:\ProgramData\Jellyfin\Server\log" -Filter "log_*.log" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
-Select-String -Path $log.FullName -Pattern "Restriccion aplicada|Instantanea|Politica restaurada"
+Select-String -Path $log.FullName -Pattern "Restriction applied|Policy snapshot|Policy restored"
 ```
 
 Expected output:
 
 ```
-ApplyTagScheduleTask: Instantanea de politica guardada para "test" (permitidas=0, bloqueadas=0)
-ApplyTagScheduleTask: Restriccion aplicada a "test" para Sunday en modo AllowOnly con 1 etiquetas
+ApplyTagScheduleTask: Policy snapshot saved for "test" (allowed=0, blocked=0)
+ApplyTagScheduleTask: Restriction applied to "test" for Sunday in AllowOnly mode with 1 tags
 ```
 
 **3. The user's policy** under Dashboard → Users → *(user)* → Parental Control, to see the tags the plugin wrote.

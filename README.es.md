@@ -116,18 +116,18 @@ if (configuration is PluginConfiguration incoming)
 
 Sin esto, la página de configuración las lee al abrirse y las reenvía al guardar. Si la tarea creó una instantánea después de cargar la página, guardar la borra; la siguiente ejecución no encuentra ninguna y toma otra **sobre la política ya restringida**, registrando el estado restringido como si fuera el original.
 
-El síntoma es traicionero: el log dice `Politica restaurada` con toda normalidad, pero restaura al estado corrupto y el usuario sigue restringido. Se detecta en el log por una segunda instantánea del mismo usuario con un conteo distinto de cero:
+El síntoma es traicionero: el log dice `Policy restored` con toda normalidad, pero restaura al estado corrupto y el usuario sigue restringido. Se detecta en el log por una segunda instantánea del mismo usuario con un conteo distinto de cero:
 
 ```
-Instantanea de politica guardada para "test" (permitidas=0, ...)   ← original correcto
-Instantanea de politica guardada para "test" (permitidas=1, ...)   ← corrupta: capturó lo restringido
+Policy snapshot saved for "test" (allowed=0, ...)   ← original correcto
+Policy snapshot saved for "test" (allowed=1, ...)   ← corrupta: capturó lo restringido
 ```
 
 Si esto ocurre, el dato original se ha perdido y hay que limpiar las etiquetas a mano en **Usuarios → *(usuario)* → Control parental**.
 
 ### Disparadores
 
-La tarea `Aplicar restricciones por dia` corre en tres momentos:
+La tarea `Apply day-of-week restrictions` corre en tres momentos:
 
 | Disparador | Para qué |
 |---|---|
@@ -163,7 +163,7 @@ public override void UpdateConfiguration(BasePluginConfiguration configuration)
 
 > Tras aplicar, **refresca el cliente o vuelve a iniciar sesión**: la interfaz web cachea las vistas y puede seguir mostrando el contenido anterior aunque la política ya haya cambiado.
 
-También puedes lanzarla a mano desde **Panel de control → Tareas programadas → Aplicar restricciones por dia**.
+También puedes lanzarla a mano desde **Panel de control → Tareas programadas → Apply day-of-week restrictions**. El nombre de la tarea sale siempre en inglés: Jellyfin lo expone como una única cadena para todo el servidor, no por usuario.
 
 ---
 
@@ -287,14 +287,14 @@ Get-Content "C:\ProgramData\Jellyfin\Server\plugins\configurations\Jellyfin.Plug
 ```powershell
 $log = Get-ChildItem "C:\ProgramData\Jellyfin\Server\log" -Filter "log_*.log" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
-Select-String -Path $log.FullName -Pattern "Restriccion aplicada|Instantanea|Politica restaurada"
+Select-String -Path $log.FullName -Pattern "Restriction applied|Policy snapshot|Policy restored"
 ```
 
-Salida esperada:
+Salida esperada (los mensajes de log van en inglés por convención):
 
 ```
-ApplyTagScheduleTask: Instantanea de politica guardada para "test" (permitidas=0, bloqueadas=0)
-ApplyTagScheduleTask: Restriccion aplicada a "test" para Sunday en modo AllowOnly con 1 etiquetas
+ApplyTagScheduleTask: Policy snapshot saved for "test" (allowed=0, blocked=0)
+ApplyTagScheduleTask: Restriction applied to "test" for Sunday in AllowOnly mode with 1 tags
 ```
 
 **3. La política del usuario** en Panel de control → Usuarios → *(usuario)* → Control parental, para ver las etiquetas que el plugin escribió.
