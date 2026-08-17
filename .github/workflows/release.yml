@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Se clona main, no el tag: el manifest.json actualizado hay que
           # confirmarlo en la rama, y desde un tag el HEAD estaria separado.
@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Configurar .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '9.0.x'
 
