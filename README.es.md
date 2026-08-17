@@ -143,6 +143,8 @@ Desactivar el plugin (`Enabled = false`) **no deja restricciones colgando**: la 
 
 **Panel de control → Complementos → Scheduled Access**
 
+![Página de configuración del plugin: un interruptor para activar las restricciones por día, y una regla por usuario con casillas de días, selector de modo y lista de etiquetas.](docs/images/configuration.es.png)
+
 1. Marca *Activar restricciones por día*.
 2. **Añadir regla**: elige usuario, marca los días, elige el modo y escribe las etiquetas separadas por comas.
 3. Guardar.

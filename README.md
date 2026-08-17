@@ -143,7 +143,9 @@ Disabling the plugin (`Enabled = false`) **leaves no restrictions dangling**: th
 
 **Dashboard → Plugins → Scheduled Access**
 
-1. Tick *Activar restricciones por día*.
+![The plugin's configuration page: a toggle to enable day-of-week restrictions, and one rule per user with day checkboxes, a mode selector and a tag list.](docs/images/configuration.png)
+
+1. Tick *Enable day-of-week restrictions*.
 2. **Add rule**: pick a user, check the days, choose the mode and enter comma-separated tags.
 3. Save.
 
