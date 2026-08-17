@@ -2,9 +2,13 @@
 
 # Jellyfin Scheduled Access
 
-Plugin para Jellyfin que restringe qué contenido ve un usuario **según el día de la semana**, usando las etiquetas (tags) de la biblioteca.
+Plugin para Jellyfin que restringe qué contenido ve un usuario **según el día de la semana y la hora**, por etiquetas, por biblioteca o por ambas.
 
-Ejemplo: que el usuario `test` solo vea contenido etiquetado como `sunday` los domingos, y su biblioteca completa el resto de la semana.
+Ejemplos:
+
+- Que solo vea contenido etiquetado como `sunday` los domingos, y su biblioteca completa el resto de la semana.
+- Contenido educativo las mañanas de diario, otra cosa por la tarde.
+- Solo la biblioteca «TV Infantil» a partir de las 19:00.
 
 ---
 
@@ -125,15 +129,32 @@ Policy snapshot saved for "test" (allowed=1, ...)   ← corrupta: capturó lo re
 
 Si esto ocurre, el dato original se ha perdido y hay que limpiar las etiquetas a mano en **Usuarios → *(usuario)* → Control parental**.
 
-### Disparadores
+### Franjas horarias
 
-La tarea `Apply day-of-week restrictions` corre en tres momentos:
+Cada regla lleva un inicio y un fin, guardados como minutos desde medianoche:
 
-| Disparador | Para qué |
-|---|---|
-| `StartupTrigger` | Corrige el estado si el servidor estuvo apagado al cambiar el día |
-| `DailyTrigger` (00:00) | El cambio de día real |
-| `IntervalTrigger` (1 h) | Red de seguridad ante suspensiones o cambios de hora |
+- **Ambos en 00:00** cubre el día entero.
+- **Fin anterior al inicio** cruza la medianoche, y **el día marcado es aquel en que la franja empieza**: una regla de domingo 22:00–06:00 sigue activa el lunes a las 02:00.
+- **El fin es exclusivo**: a las 11:00 en punto, una franja 08:00–11:00 ya no aplica.
+- **Si dos franjas se solapan, gana la más corta**, de modo que una franja concreta puede anular a una general sin tener que recortar esta última. A igualdad de duración gana la primera declarada, para que el resultado sea determinista.
+
+### Bibliotecas
+
+Una regla puede además limitar qué bibliotecas se ven mientras está activa, poniendo `EnableAllFolders` a false y `EnabledFolders` a la lista elegida.
+
+Los dos filtros son independientes y se combinan: puedes limitar a una biblioteca **y** filtrar por etiquetas dentro de ella. Una lista de bibliotecas vacía no toca el acceso.
+
+### Qué lo mueve: un vigilante, no un sondeo
+
+Las franjas horarias exigen una precisión que una tarea programada no da. Un disparador por intervalo llegaría hasta una hora tarde, y bajarlo a minutos llenaría el historial de tareas del panel con cientos de entradas diarias.
+
+En su lugar, `ScheduleWatcher` —un `IHostedService` registrado vía `IPluginServiceRegistrator`— calcula el próximo límite de franja y duerme exactamente hasta él, sin dejar rastro en ese historial. Guardar la configuración lo despierta al instante, así que los cambios se aplican en segundos.
+
+Limita cada sueño a una hora como red de seguridad: si el equipo suspende, cambia la hora del sistema o entra el horario de verano, recalcular cada hora corrige la deriva sin coste real, porque una pasada sin cambios no escribe nada.
+
+La tarea programada `Apply day-of-week restrictions` sigue existiendo, pero solo con disparador de arranque y diario. Es un botón manual para diagnosticar y una red de seguridad por si el vigilante no arrancara — no es quien conmuta las franjas.
+
+Ambos llaman al mismo `ScheduleEnforcer`, que es el único código que escribe políticas y serializa sus ejecuciones tras un semáforo. Dos pasadas simultáneas podrían entrelazar la lectura y escritura de instantáneas y registrar como original un estado ya restringido: la corrupción irreversible contra la que existe todo este mecanismo.
 
 Desactivar el plugin (`Enabled = false`) **no deja restricciones colgando**: la siguiente ejecución restaura todas las instantáneas pendientes y las descarta.
 
@@ -146,8 +167,17 @@ Desactivar el plugin (`Enabled = false`) **no deja restricciones colgando**: la 
 ![Página de configuración del plugin: un interruptor para activar las restricciones por día, y una regla por usuario con casillas de días, selector de modo y lista de etiquetas.](docs/images/configuration.es.png)
 
 1. Marca *Activar restricciones por día*.
-2. **Añadir regla**: elige usuario, marca los días, elige el modo y escribe las etiquetas separadas por comas.
+2. **Añadir regla**: elige usuario, marca los días, fija la franja horaria, marca bibliotecas si quieres, elige el modo y escribe las etiquetas separadas por comas.
 3. Guardar.
+
+Un ejemplo real — contenido educativo las mañanas de diario, dibujos antes de la cena:
+
+| Regla | Días | Franja | Modo | Etiquetas |
+|---|---|---|---|---|
+| Hora de aprender | L–V | 07:00–12:00 | Mostrar únicamente | `educativo` |
+| Antes de cenar | L–V | 16:00–19:00 | Mostrar únicamente | `dibujos` |
+
+Fuera de ambas franjas no aplica ninguna regla, así que el niño ve su biblioteca normal.
 
 Al guardar, el plugin **encola la tarea automáticamente**, así que el cambio surte efecto en segundos sin esperar a medianoche. Esto lo hace `Plugin.UpdateConfiguration`, que es `virtual` en `BasePlugin<T>`:
 
@@ -443,7 +473,9 @@ Este plugin solo aporta valor cuando el usuario **sí debe poder entrar** ese d�
 - **El nombre de la tarea programada solo existe en inglés.** Jellyfin expone el nombre de una tarea como una única cadena para todo el servidor, no por usuario, así que no admite localización. La página de configuración **sí** está localizada — ver más abajo.
 - **Las reglas también aplican a cuentas de administrador** (verificado en 10.11.11). A diferencia de otros controles parentales de Jellyfin, el filtrado por etiquetas no exime a los admin: si te aplicas una regla a ti mismo, verás la biblioteca recortada igual que cualquier otro usuario. Ten cuidado de no dejarte fuera del contenido que necesitas.
 - La versión que muestra el gestor de complementos sale como `0.0.0.0` en instalaciones manuales, porque se lee del manifiesto y no del ensamblado. Es cosmético en desarrollo.
-- Las reglas no validan solapamientos: si dos reglas apuntan al mismo usuario y día, gana la última en aplicarse.
+- Los solapamientos se resuelven por «gana la más corta», pero la página de configuración no avisa cuando dos franjas se solapan. Tienes que razonarlo tú.
+- **Las instantáneas tomadas antes del soporte de bibliotecas restauran solo etiquetas.** No llevan estado de bibliotecas, y aplicar sus valores por defecto dejaría al usuario sin acceso a nada, así que el plugin las deja intactas a propósito y lo avisa en el log. Una instantánea tomada tras actualizar cubre ambas cosas.
+- No hay proyecto de tests. La lógica de franjas —cruce de medianoche, solapamientos, cálculo de límites— se verificó ejercitándola por fuera, no con tests que corran en cada compilación.
 
 ## Licencia
 

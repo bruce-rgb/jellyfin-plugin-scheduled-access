@@ -2,9 +2,13 @@
 
 # Jellyfin Scheduled Access
 
-A Jellyfin plugin that restricts what content a user can see **based on the day of the week**, using library tags.
+A Jellyfin plugin that restricts what content a user can see **based on the day of the week and the time of day**, by tag, by library, or both.
 
-Example: user `test` only sees content tagged `sunday` on Sundays, and their full library the rest of the week.
+Examples:
+
+- Only content tagged `sunday` on Sundays, and the full library the rest of the week.
+- Educational shows on weekday mornings, something else in the afternoon.
+- Only the "Kids TV" library after 19:00.
 
 ---
 
@@ -125,15 +129,32 @@ Policy snapshot saved for "test" (allowed=1, ...)   ← corrupt: captured the re
 
 If this happens the original data is lost, and the tags must be cleared by hand under **Users → *(user)* → Parental Control**.
 
-### Triggers
+### Time slots
 
-The `Apply day-of-week restrictions` task runs at three moments:
+A rule carries a start and an end, stored as minutes from midnight:
 
-| Trigger | Purpose |
-|---|---|
-| `StartupTrigger` | Fixes state if the server was off when the day changed |
-| `DailyTrigger` (00:00) | The actual day change |
-| `IntervalTrigger` (1 h) | Safety net against sleep or clock changes |
+- **Both at 00:00** covers the whole day.
+- **End earlier than start** runs past midnight, and **the checked day is the one the slot starts on** — a Sunday 22:00–06:00 rule is still active on Monday at 02:00.
+- **The end is exclusive**: at 11:00 sharp, an 08:00–11:00 slot no longer applies.
+- **When slots overlap, the shortest wins**, so a specific slot can override a general one without having to carve up the general rule. Ties are broken by declaration order, so the outcome is always deterministic.
+
+### Libraries
+
+A rule can also limit which libraries are visible while it's active, by setting `EnableAllFolders` to false and `EnabledFolders` to the chosen list.
+
+The two filters are independent and combine: you can restrict to one library *and* filter by tags inside it. An empty library list leaves library access untouched.
+
+### What drives it: a watcher, not a polling task
+
+Time slots need precision that a scheduled task can't give. An interval trigger would fire up to an hour late, and dropping it to minutes would flood the dashboard's task history with hundreds of daily entries.
+
+Instead, `ScheduleWatcher` — an `IHostedService` registered through `IPluginServiceRegistrator` — computes the next slot boundary and sleeps exactly until it, leaving no trace in that history. Saving the configuration wakes it immediately, so changes apply within seconds.
+
+It caps each sleep at one hour as a safety net: if the machine suspends, the clock changes, or DST shifts, recomputing hourly corrects the drift at no real cost, because a run with nothing to change writes nothing.
+
+The `Apply day-of-week restrictions` scheduled task remains, but only with a startup and a daily trigger. It's a manual button for diagnosis and a daily fallback in case the watcher fails to start — not the thing that switches slots.
+
+Both call the same `ScheduleEnforcer`, which is the only code that writes policies and serialises its runs behind a semaphore. Two concurrent passes could interleave reading and writing snapshots and record an already-restricted state as the original — the irreversible corruption this whole mechanism exists to prevent.
 
 Disabling the plugin (`Enabled = false`) **leaves no restrictions dangling**: the next run restores every pending snapshot and discards them.
 
@@ -146,8 +167,17 @@ Disabling the plugin (`Enabled = false`) **leaves no restrictions dangling**: th
 ![The plugin's configuration page: a toggle to enable day-of-week restrictions, and one rule per user with day checkboxes, a mode selector and a tag list.](docs/images/configuration.png)
 
 1. Tick *Enable day-of-week restrictions*.
-2. **Add rule**: pick a user, check the days, choose the mode and enter comma-separated tags.
+2. **Add rule**: pick a user, check the days, set the time slot, optionally check libraries, choose the tag mode and enter comma-separated tags.
 3. Save.
+
+A worked example — educational content on weekday mornings, cartoons before dinner:
+
+| Rule | Days | Slot | Mode | Tags |
+|---|---|---|---|---|
+| Learning time | Mon–Fri | 07:00–12:00 | Show only | `educational` |
+| Wind-down | Mon–Fri | 16:00–19:00 | Show only | `cartoons` |
+
+Outside both slots no rule applies, so the child sees their normal library.
 
 On save the plugin **queues the task automatically**, so changes take effect within seconds instead of waiting for midnight. This is done by `Plugin.UpdateConfiguration`, which is `virtual` on `BasePlugin<T>`:
 
@@ -443,7 +473,9 @@ This plugin only adds value when the user **should** be able to sign in that day
 - **The scheduled task name is English-only.** Jellyfin exposes a task's name as a single server-wide string, not per user, so it can't be localised. The configuration page *is* localised — see below.
 - **Rules apply to administrator accounts too** (verified on 10.11.11). Unlike other Jellyfin parental controls, tag filtering doesn't exempt admins: if you apply a rule to yourself, you'll see the same trimmed library as anyone else. Be careful not to lock yourself out of content you need.
 - The version shown by the plugin manager reads `0.0.0.0` on manual installs, because it comes from the manifest rather than the assembly. Cosmetic, and only during development.
-- Rules don't validate overlaps: if two rules target the same user and day, the last one applied wins.
+- Overlapping slots resolve by "shortest wins", but the configuration page doesn't warn you when they overlap. You have to reason about it yourself.
+- **Snapshots taken before library support restore tags only.** They carry no library state, and applying their defaults would strip the user's access to everything, so the plugin deliberately leaves libraries untouched for those and logs a warning. A snapshot taken after upgrading covers both.
+- There's no test project. The slot logic — midnight wrapping, overlaps, boundary maths — was verified by exercising it externally, not by tests that run on every build.
 
 ## Licence
 
