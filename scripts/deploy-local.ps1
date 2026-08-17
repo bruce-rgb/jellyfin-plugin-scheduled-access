@@ -48,7 +48,9 @@ $build = Join-Path $root "$name/bin/$Configuration/net9.0/publish"
 $dest  = Join-Path $DataDir "plugins/$name"
 
 Write-Host "==> Compilando ($Configuration)" -ForegroundColor Cyan
-dotnet publish --configuration $Configuration (Join-Path $root "$name.sln") `
+# El csproj y no el .sln: publicar la solucion arrastraria el proyecto de
+# tests a la carpeta que luego se copia al servidor.
+dotnet publish --configuration $Configuration (Join-Path $root "$name/$name.csproj") `
     /consoleloggerparameters:NoSummary --nologo
 if ($LASTEXITCODE -ne 0) {
     throw "La compilacion fallo con codigo $LASTEXITCODE"

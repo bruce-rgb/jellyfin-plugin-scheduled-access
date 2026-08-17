@@ -69,7 +69,9 @@ Write-Host "==> Compilando en Release (version $Version)" -ForegroundColor Cyan
 # La version se pasa al compilador en vez de depender de Directory.Build.props:
 # asi el ensamblado, el meta.json y el manifiesto no pueden desincronizarse al
 # publicar una version nueva.
-dotnet publish --configuration Release (Join-Path $root "$name.sln") `
+# Se publica el csproj, no el .sln: desde que hay proyecto de tests, publicar
+# la solucion arrastraria tambien ese binario a la salida.
+dotnet publish --configuration Release (Join-Path $root "$name/$name.csproj") `
     -p:Version=$Version -p:AssemblyVersion=$Version -p:FileVersion=$Version `
     /consoleloggerparameters:NoSummary --nologo
 if ($LASTEXITCODE -ne 0) {
@@ -165,6 +167,16 @@ if ($null -eq $plugin) {
 # Reemplaza la entrada si esa version ya existia, para que reejecutar el
 # script no duplique. Las versiones van de mas nueva a mas antigua.
 $others = @($plugin.versions | Where-Object { $_.version -ne $Version })
+
+# Reejecutar para una version ya listada le cambia el checksum, y si esa
+# version ya esta publicada el manifiesto deja de casar con su zip: el
+# servidor rechazara la descarga sin explicar por que. Como el zip no es
+# reproducible, esto pasa incluso recompilando el mismo codigo.
+if ($others.Count -ne $plugin.versions.Count) {
+    Write-Warning "La version $Version ya estaba en el manifiesto y se reemplaza con un checksum nuevo."
+    Write-Warning "Si ya publicaste ese zip, vuelve a subir EXACTAMENTE el que acaba de generarse."
+}
+
 $plugin.versions = @([PSCustomObject]$entry) + $others
 
 # -Depth 6: el anidamiento es manifest > plugin > versions > entrada.

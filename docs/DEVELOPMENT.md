@@ -159,6 +159,30 @@ Rules that bite in practice:
 
 ---
 
+## Tests
+
+```bash
+dotnet test
+```
+
+The suite covers `ScheduleResolver` — when a rule is in force and when the next boundary falls. That's deliberately the only thing tested: it's pure logic with no server dependencies, and it's where every awkward case lives. The rest of the plugin is mostly orchestration over Jellyfin's own APIs, which is better verified by running it than by mocking it.
+
+Cases worth keeping green:
+
+- Slot start inclusive, **end exclusive**
+- Whole day expressed both as `0–0` (what the UI sends) and `0–1440` (what migrated rules look like)
+- **Wrapping past midnight**, including that the tail belongs to the start day and doesn't leak into the previous one
+- Overlaps resolving shortest-first, one rule per user, ties broken deterministically
+- Next boundary always strictly in the future — returning "now" would spin the watcher in a tight loop
+
+Dates in the tests are fixed rather than `DateTime.Now`, so the suite doesn't pass or fail depending on the day it runs.
+
+The release workflow runs `dotnet test` before packaging: a broken release is far more expensive to undo than one that never ships.
+
+> Note that `dotnet publish` targets the plugin `.csproj`, not the `.sln`. Publishing the solution would drag the test assembly into the output.
+
+---
+
 ## Deploying locally
 
 VS Code tasks (`Ctrl+Shift+P → Tasks: Run Task`):
@@ -383,6 +407,7 @@ The binary links against GPLv3 packages, so **it is GPLv3**. Distributing it req
 
 ## Known gaps
 
-- **There's no test project.** The slot logic — midnight wrapping, overlaps, boundary maths — was verified by exercising it externally against the built assembly, not by tests that run on every build. That verification isn't in the repository.
+- **Only `ScheduleResolver` is covered by tests.** The enforcer, the watcher and the snapshot invariants are verified by running them against a real server, not automatically. The invariants are exactly the parts where a regression is silent and irreversible, so they're the obvious next thing to cover.
 - The configuration page doesn't validate overlapping slots; it relies on the "shortest wins" rule being understood.
 - Snapshots taken before library support restore tags only, by design (invariant 3).
+- Re-running `package.ps1` for a version that's already published replaces its checksum, and the zip isn't reproducible. The script warns, but nothing stops you.

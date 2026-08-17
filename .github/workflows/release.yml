@@ -38,6 +38,11 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
 
+      - name: Ejecutar tests
+        # Antes de empaquetar: un release roto es mucho mas caro de deshacer
+        # que uno que no llega a publicarse.
+        run: dotnet test --configuration Release --nologo
+
       - name: Empaquetar
         shell: pwsh
         # Se reutiliza el mismo script que se usa en local: una sola fuente de
