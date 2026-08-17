@@ -155,20 +155,30 @@ Tareas de VS Code (`Ctrl+Shift+P → Tasks: Run Task`):
 
 | Tarea | Qué hace |
 |---|---|
-| **`deploy`** | `build` → `install-plugin`. Es la que usarás normalmente (también con `Ctrl+Shift+B`) |
-| **`build`** | Solo `dotnet publish` |
-| **`install-plugin`** | Detiene el servicio, copia la DLL, lo rearranca |
+| **`deploy`** | Compila y despliega. Es la que usarás normalmente (también con `Ctrl+Shift+B`) |
+| **`build`** | Solo compila, sin desplegar ni pasar por el UAC |
 | **`tail-log`** | Sigue el log del servidor en vivo |
 | **`tail-log-plugin`** | Igual, pero filtrado a las líneas del plugin |
 
 Las tareas se lanzan con `Ctrl+Shift+P → Tasks: Run Task`. `Ctrl+Shift+B` es un atajo directo a `deploy`, por ser la tarea de build por defecto. Las dos de log quedan corriendo hasta que las pares desde el panel de terminal.
 
-`install-plugin` agrupa **parar → copiar → arrancar dentro de una sola elevación**, por dos motivos:
+La lógica vive en [scripts/deploy-local.ps1](scripts/deploy-local.ps1), que también puedes ejecutar a mano. Agrupa **parar → copiar → permisos → arrancar en una sola elevación**, por dos motivos:
 
 1. Jellyfin mantiene la DLL bloqueada mientras corre; copiar con el servicio arriba falla con `IOException`.
 2. Parar y arrancar un servicio exige privilegios de administrador. Agruparlo evita encadenar varios avisos de UAC.
 
 **Aceptar el UAC es manual.** No hay forma de evitarlo con Jellyfin instalado como servicio.
+
+> **El `meta.json` debe llevar la versión real del ensamblado.** El script la lee del binario recién compilado en vez de escribirla a mano, y no es un detalle cosmético.
+>
+> Jellyfin **registra** el plugin por la versión del manifiesto, pero el panel **muestra y envía** la del ensamblado. Si divergen, `DELETE /Plugins/{guid}/{version}` responde **404**: busca una versión que no tiene registrada. El síntoma engaña, porque el plugin carga y funciona con normalidad; lo que falla es desinstalarlo o actualizarlo desde el panel.
+>
+> Ocurría al copiar solo la salida de compilación: la DLL se actualizaba y el `meta.json` se quedaba con la versión del primer despliegue. Se detecta comparando lo que dice el log al arrancar con lo que muestra el panel:
+>
+> ```
+> Loaded assembly "...Version=1.0.0.0..."      ← el ensamblado
+> Loaded plugin: "Scheduled Access" "0.0.0.0"  ← el manifiesto: no coinciden
+> ```
 
 Copia también el `.pdb`: es lo que permite poner breakpoints.
 

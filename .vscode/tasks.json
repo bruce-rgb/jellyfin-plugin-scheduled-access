@@ -3,16 +3,29 @@
   "version": "2.0.0",
   "tasks": [
     {
-      // Tarea principal: compilar y desplegar al servidor.
+      // Tarea principal: compilar y desplegar al servidor local.
+      // La logica vive en scripts/deploy-local.ps1 para poder ejecutarla
+      // tambien a mano y para que sea legible: como comando inline habia
+      // crecido hasta ser imposible de revisar.
       "label": "deploy",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "build",
-        "install-plugin"
-      ],
-      "problemMatcher": []
+      "type": "shell",
+      "options": {
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]
+        }
+      },
+      "command": "${workspaceFolder}/scripts/deploy-local.ps1",
+      "args": ["-DataDir", "${config:jellyfinDataDir}"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$msCompile"
     },
     {
+      // Solo compila, sin desplegar. Util para comprobar rapido que algo
+      // compila sin pasar por el UAC del despliegue.
       "label": "build",
       "command": "dotnet",
       "type": "shell",
@@ -23,42 +36,11 @@
         "/property:GenerateFullPaths=true",
         "/consoleloggerparameters:NoSummary"
       ],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
+      "group": "build",
       "presentation": {
         "reveal": "silent"
       },
       "problemMatcher": "$msCompile"
-    },
-    {
-      // Detiene el servicio, copia la DLL, ajusta permisos y lo rearranca.
-      //
-      // Va todo dentro de UNA sola elevacion por dos motivos:
-      //  1. Jellyfin mantiene la DLL bloqueada mientras corre, asi que copiar
-      //     con el servicio arriba falla con IOException.
-      //  2. Parar/arrancar un servicio exige privilegios de administrador, y
-      //     agrupar las operaciones evita encadenar varios avisos de UAC.
-      //
-      // El icacls final NO es opcional. Por la regla CREATOR OWNER, la carpeta
-      // creada aqui queda en poder del usuario de Windows que la crea, y el
-      // servicio (NT AUTHORITY\NETWORK SERVICE) solo hereda lectura. El plugin
-      // carga bien, pero desinstalarlo o actualizarlo desde el panel falla
-      // porque el servicio no puede borrar sus propios archivos.
-      //
-      // Aceptar el UAC es manual: no hay forma de evitarlo sin instalar
-      // Jellyfin en modo usuario.
-      "label": "install-plugin",
-      "type": "shell",
-      "options": {
-        "shell": {
-          "executable": "powershell.exe",
-          "args": ["-NoProfile", "-Command"]
-        }
-      },
-      "command": "$dest = '${config:jellyfinDataDir}/plugins/${config:pluginName}'; $src = '${workspaceFolder}/${config:pluginName}/bin/Debug/net9.0/publish/*'; $inner = \"New-Item -ItemType Directory -Force -Path '$dest' | Out-Null; Stop-Service JellyfinServer; Start-Sleep -Seconds 3; Copy-Item -Force -Path '$src' -Destination '$dest'; icacls '$dest' /grant 'NT AUTHORITY\\NETWORK SERVICE:(OI)(CI)F' /T | Out-Null; Start-Service JellyfinServer\"; Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command',$inner -Wait; 'servicio: ' + (Get-Service JellyfinServer).Status",
-      "problemMatcher": []
     },
     {
       // Sigue el log del servidor en vivo. Util para ver los mensajes
