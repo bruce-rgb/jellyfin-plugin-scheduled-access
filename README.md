@@ -17,6 +17,35 @@ Los paquetes `Jellyfin.Controller` / `Jellyfin.Model` del `csproj` deben ir **fi
 
 ---
 
+## Instalación
+
+### Desde el repositorio (recomendado)
+
+**1. Añade el repositorio.** En *Panel de control → Complementos → **Repositorios*** → **+ Nuevo repositorio**:
+
+| Campo | Valor |
+|---|---|
+| Nombre | `Scheduled Access` (o el que quieras) |
+| URL | `https://raw.githubusercontent.com/bruce-rgb/jellyfin-plugin-scheduled-access/main/manifest.json` |
+
+**2. Instálalo.** Cambia a la pestaña ***Catálogo*** — no a *Repositorios*, que solo lista las fuentes — y busca **Scheduled Access** en la categoría *General*.
+
+**3. Reinicia el servidor.** Jellyfin solo carga plugins nuevos al arrancar.
+
+Esta vía es preferible a copiar archivos a mano: la carpeta la crea el propio servicio, con sus permisos correctos y un `meta.json` coherente, lo que evita los dos problemas descritos en [Depurar](#depurar).
+
+> **Si el plugin no aparece en el catálogo**, comprueba en este orden:
+> 1. Que estás mirando *Catálogo* y no *Repositorios*.
+> 2. Que la URL responde: ábrela en el navegador, debe devolver el JSON.
+> 3. Que el `targetAbi` del manifiesto no sea superior a tu versión de servidor.
+> 4. Reinicia el servidor, por si el manifiesto quedó cacheado.
+
+### Instalación manual
+
+Descarga el `.zip` de [Releases](https://github.com/bruce-rgb/jellyfin-plugin-scheduled-access/releases), extráelo en una carpeta dentro de `<datadir>/plugins/` y reinicia. Los detalles por sistema están en [Desplegar en un servidor real](#desplegar-en-un-servidor-real-docker).
+
+---
+
 ## Cómo funciona
 
 Jellyfin ya evalúa la visibilidad de cada ítem contra dos listas de la política de usuario. Esta es la lógica real del servidor (`BaseItem.IsVisibleViaTags`, v10.11.11):
