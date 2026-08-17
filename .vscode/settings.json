@@ -1,0 +1,10 @@
+{
+    // Carpeta de datos del servidor Jellyfin instalado (no del codigo fuente).
+    // Carpeta de datos del servidor Jellyfin instalado (no del codigo fuente).
+    // Verificado en los parametros del servicio JellyfinServer:
+    //   jellyfin.exe --service --datadir "C:\ProgramData\Jellyfin\Server"
+    // Si algun dia lo reinstalas en modo usuario/bandeja, cambia a ${env:LOCALAPPDATA}/jellyfin
+    "jellyfinDataDir": "${env:ProgramData}/Jellyfin/Server",
+    // Nombre del proyecto/plugin. Debe coincidir con el nombre de la carpeta y del csproj.
+    "pluginName": "Jellyfin.Plugin.ScheduledAccess"
+}

@@ -1,0 +1,17 @@
+---
+name: "Scheduled Access"
+guid: "65e8ae1e-ea44-4b8c-a2c7-16f46a158eb4"
+version: "1.0.0.0"
+targetAbi: "10.11.0.0"
+framework: "net9.0"
+overview: "Restringe el acceso a bibliotecas segun el dia de la semana"
+description: >
+  Ajusta automaticamente las politicas de usuario de Jellyfin en funcion
+  del dia de la semana, permitiendo bloquear bibliotecas concretas en los
+  dias configurados.
+category: "General"
+owner: "brucers1234"
+artifacts:
+- "Jellyfin.Plugin.ScheduledAccess.dll"
+changelog: >
+  Version inicial.

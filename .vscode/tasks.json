@@ -1,0 +1,88 @@
+{
+  // Las rutas y el nombre del plugin se configuran en settings.json
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // Tarea principal: compilar y desplegar al servidor.
+      "label": "deploy",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "build",
+        "install-plugin"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "build",
+      "command": "dotnet",
+      "type": "shell",
+      "args": [
+        "publish",
+        "--configuration=Debug",
+        "${workspaceFolder}/${config:pluginName}.sln",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "silent"
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      // Detiene el servicio, copia la DLL y lo vuelve a arrancar.
+      //
+      // Va todo dentro de UNA sola elevacion por dos motivos:
+      //  1. Jellyfin mantiene la DLL bloqueada mientras corre, asi que copiar
+      //     con el servicio arriba falla con IOException.
+      //  2. Parar/arrancar un servicio exige privilegios de administrador, y
+      //     agrupar las tres operaciones evita encadenar varios avisos de UAC.
+      //
+      // Aceptar el UAC es manual: no hay forma de evitarlo sin instalar
+      // Jellyfin en modo usuario.
+      "label": "install-plugin",
+      "type": "shell",
+      "options": {
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoProfile", "-Command"]
+        }
+      },
+      "command": "$dest = '${config:jellyfinDataDir}/plugins/${config:pluginName}'; $src = '${workspaceFolder}/${config:pluginName}/bin/Debug/net9.0/publish/*'; $inner = \"New-Item -ItemType Directory -Force -Path '$dest' | Out-Null; Stop-Service JellyfinServer; Start-Sleep -Seconds 3; Copy-Item -Force -Path '$src' -Destination '$dest'; Start-Service JellyfinServer\"; Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command',$inner -Wait; 'servicio: ' + (Get-Service JellyfinServer).Status",
+      "problemMatcher": []
+    },
+    {
+      // Sigue el log del servidor en vivo. Util para ver los mensajes
+      // que emite la tarea programada del plugin.
+      "label": "tail-log",
+      "type": "shell",
+      "isBackground": true,
+      "options": {
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoProfile", "-Command"]
+        }
+      },
+      "command": "Get-ChildItem '${config:jellyfinDataDir}/log' -Filter 'log_*.log' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Get-Content $_.FullName -Wait -Tail 30 }",
+      "problemMatcher": []
+    },
+    {
+      // Igual que tail-log pero solo las lineas del plugin. Jellyfin escribe
+      // mucho ruido (escaneos, EF Core, ffmpeg) que entierra lo nuestro.
+      "label": "tail-log-plugin",
+      "type": "shell",
+      "isBackground": true,
+      "options": {
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoProfile", "-Command"]
+        }
+      },
+      "command": "Get-ChildItem '${config:jellyfinDataDir}/log' -Filter 'log_*.log' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Get-Content $_.FullName -Wait -Tail 50 } | Select-String -Pattern 'ScheduledAccess|Instantanea|Restriccion aplicada|Politica restaurada'",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+.idea/
+artifacts
+dist/
+
+# Clon de referencia del template oficial: tiene su propio .git
+jellyfin-plugin-template/

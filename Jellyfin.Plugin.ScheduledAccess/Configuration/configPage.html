@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Scheduled Access</title>
+</head>
+<body>
+    <div id="ScheduledAccessConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+         data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="ScheduledAccessConfigForm">
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="Enabled" name="Enabled" type="checkbox" is="emby-checkbox" />
+                            <span>Activar restricciones por dia</span>
+                        </label>
+                        <div class="fieldDescription">
+                            Al desactivarlo, la siguiente ejecucion de la tarea restaura las etiquetas
+                            originales de todos los usuarios afectados.
+                        </div>
+                    </div>
+
+                    <h3>Reglas</h3>
+                    <div class="fieldDescription" style="margin-bottom:1em;">
+                        Cada regla aplica a un usuario en los dias marcados. Las etiquetas se heredan de
+                        carpetas y colecciones, asi que puedes etiquetar una carpeta entera en vez de item por item.
+                    </div>
+
+                    <div id="RulesContainer"></div>
+
+                    <button is="emby-button" type="button" id="AddRule" class="raised block emby-button">
+                        <span>Anadir regla</span>
+                    </button>
+
+                    <br />
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Guardar</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            (function () {
+                var pluginUniqueId = '65e8ae1e-ea44-4b8c-a2c7-16f46a158eb4';
+
+                var DAYS = [
+                    ['Sunday', 'Dom'], ['Monday', 'Lun'], ['Tuesday', 'Mar'], ['Wednesday', 'Mie'],
+                    ['Thursday', 'Jue'], ['Friday', 'Vie'], ['Saturday', 'Sab']
+                ];
+
+                var page = document.querySelector('#ScheduledAccessConfigPage');
+                var container = page.querySelector('#RulesContainer');
+                var users = [];
+                // Las instantaneas NO se tocan desde aqui: son estado del servidor.
+                // Reenviarlas desde el cliente destruiria el registro del estado
+                // original de cada usuario. El servidor las preserva por su cuenta
+                // en Plugin.UpdateConfiguration.
+
+                function normalizeDays(days) {
+                    if (!days) {
+                        return [];
+                    }
+                    return days.map(function (d) {
+                        return typeof d === 'number' ? DAYS[d][0] : d;
+                    });
+                }
+
+                function normalizeMode(mode) {
+                    if (typeof mode === 'number') {
+                        return mode === 1 ? 'AllowOnly' : 'Block';
+                    }
+                    return mode || 'Block';
+                }
+
+                function renderRule(rule) {
+                    var row = document.createElement('div');
+                    row.className = 'ScheduledAccessRule';
+                    row.style.cssText = 'border:1px solid rgba(128,128,128,.4);border-radius:4px;padding:1em;margin-bottom:1em;';
+
+                    var userOptions = users.map(function (u) {
+                        var sel = u.Id === rule.UserId ? ' selected' : '';
+                        return '<option value="' + u.Id + '"' + sel + '>' + u.Name + '</option>';
+                    }).join('');
+
+                    var selectedDays = normalizeDays(rule.Days);
+                    var dayBoxes = DAYS.map(function (d) {
+                        var checked = selectedDays.indexOf(d[0]) !== -1 ? ' checked' : '';
+                        return '<label class="emby-checkbox-label" style="display:inline-block;margin-right:1em;">' +
+                            '<input type="checkbox" is="emby-checkbox" class="ruleDay" value="' + d[0] + '"' + checked + ' />' +
+                            '<span>' + d[1] + '</span></label>';
+                    }).join('');
+
+                    var mode = normalizeMode(rule.Mode);
+
+                    row.innerHTML =
+                        '<div class="selectContainer">' +
+                            '<label class="selectLabel">Usuario</label>' +
+                            '<select is="emby-select" class="ruleUser emby-select-withcolor emby-select">' + userOptions + '</select>' +
+                        '</div>' +
+                        '<div style="margin:.5em 0 1em 0;">' + dayBoxes + '</div>' +
+                        '<div class="selectContainer">' +
+                            '<label class="selectLabel">Modo</label>' +
+                            '<select is="emby-select" class="ruleMode emby-select-withcolor emby-select">' +
+                                '<option value="Block"' + (mode === 'Block' ? ' selected' : '') + '>Ocultar el contenido con estas etiquetas</option>' +
+                                '<option value="AllowOnly"' + (mode === 'AllowOnly' ? ' selected' : '') + '>Mostrar unicamente el contenido con estas etiquetas</option>' +
+                            '</select>' +
+                        '</div>' +
+                        '<div class="inputContainer">' +
+                            '<label class="inputLabel inputLabelUnfocused">Etiquetas (separadas por comas)</label>' +
+                            '<input type="text" is="emby-input" class="ruleTags" value="' + (rule.Tags || []).join(', ') + '" />' +
+                            '<div class="fieldDescription">' +
+                                'En modo "mostrar unicamente", todo lo que no lleve alguna de estas etiquetas se oculta.' +
+                            '</div>' +
+                        '</div>' +
+                        '<button is="emby-button" type="button" class="raised removeRule emby-button"><span>Quitar</span></button>';
+
+                    row.querySelector('.removeRule').addEventListener('click', function () {
+                        row.remove();
+                    });
+
+                    container.appendChild(row);
+                }
+
+                function collectRules() {
+                    return Array.prototype.map.call(
+                        container.querySelectorAll('.ScheduledAccessRule'),
+                        function (row) {
+                            var days = Array.prototype.filter
+                                .call(row.querySelectorAll('.ruleDay'), function (c) { return c.checked; })
+                                .map(function (c) { return c.value; });
+
+                            var tags = row.querySelector('.ruleTags').value
+                                .split(',')
+                                .map(function (t) { return t.trim(); })
+                                .filter(function (t) { return t.length > 0; });
+
+                            return {
+                                UserId: row.querySelector('.ruleUser').value,
+                                Mode: row.querySelector('.ruleMode').value,
+                                Days: days,
+                                Tags: tags
+                            };
+                        });
+                }
+
+                page.addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+
+                    ApiClient.getUsers().then(function (userList) {
+                        users = userList;
+                        return ApiClient.getPluginConfiguration(pluginUniqueId);
+                    }).then(function (config) {
+                        page.querySelector('#Enabled').checked = config.Enabled;
+
+                        container.innerHTML = '';
+                        (config.Rules || []).forEach(renderRule);
+
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                page.querySelector('#AddRule').addEventListener('click', function () {
+                    if (!users.length) {
+                        return;
+                    }
+                    renderRule({ UserId: users[0].Id, Mode: 'Block', Days: [], Tags: [] });
+                });
+
+                page.querySelector('#ScheduledAccessConfigForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+
+                    ApiClient.getPluginConfiguration(pluginUniqueId).then(function (config) {
+                        config.Enabled = page.querySelector('#Enabled').checked;
+                        config.Rules = collectRules();
+
+                        ApiClient.updatePluginConfiguration(pluginUniqueId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+
+                    return false;
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>

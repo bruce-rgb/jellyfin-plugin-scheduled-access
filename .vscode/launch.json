@@ -1,0 +1,17 @@
+{
+    // Como usas un servidor Jellyfin instalado (binario oficial, no compilado desde
+    // codigo fuente), la forma de depurar es ADJUNTARSE al proceso ya en ejecucion,
+    // no lanzarlo desde VS Code.
+    //
+    // Flujo: ejecuta la tarea "deploy" (Ctrl+Shift+B o Terminal > Run Task),
+    // espera a que el servidor arranque y luego lanza esta configuracion.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Adjuntar a Jellyfin",
+            "type": "coreclr",
+            "request": "attach",
+            "processName": "jellyfin.exe"
+        }
+    ]
+}
