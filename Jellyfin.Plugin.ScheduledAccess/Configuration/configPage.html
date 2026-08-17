@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <title>Scheduled Access</title>
@@ -13,30 +13,29 @@
                     <div class="checkboxContainer checkboxContainer-withDescription">
                         <label class="emby-checkbox-label">
                             <input id="Enabled" name="Enabled" type="checkbox" is="emby-checkbox" />
-                            <span>Activar restricciones por dia</span>
+                            <span data-localize="EnableLabel">Enable day-of-week restrictions</span>
                         </label>
-                        <div class="fieldDescription">
-                            Al desactivarlo, la siguiente ejecucion de la tarea restaura las etiquetas
-                            originales de todos los usuarios afectados.
+                        <div class="fieldDescription" data-localize="EnableDescription">
+                            While disabled, the next task run restores every affected user's original tags.
                         </div>
                     </div>
 
-                    <h3>Reglas</h3>
-                    <div class="fieldDescription" style="margin-bottom:1em;">
-                        Cada regla aplica a un usuario en los dias marcados. Las etiquetas se heredan de
-                        carpetas y colecciones, asi que puedes etiquetar una carpeta entera en vez de item por item.
+                    <h3 data-localize="Rules">Rules</h3>
+                    <div class="fieldDescription" style="margin-bottom:1em;" data-localize="RulesDescription">
+                        Each rule applies to one user on the days you check. Tags are inherited from parent
+                        folders and collections, so you can tag a whole folder instead of item by item.
                     </div>
 
                     <div id="RulesContainer"></div>
 
                     <button is="emby-button" type="button" id="AddRule" class="raised block emby-button">
-                        <span>Anadir regla</span>
+                        <span data-localize="AddRule">Add rule</span>
                     </button>
 
                     <br />
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
-                            <span>Guardar</span>
+                            <span data-localize="Save">Save</span>
                         </button>
                     </div>
                 </form>
@@ -47,25 +46,81 @@
             (function () {
                 var pluginUniqueId = '65e8ae1e-ea44-4b8c-a2c7-16f46a158eb4';
 
-                var DAYS = [
-                    ['Sunday', 'Dom'], ['Monday', 'Lun'], ['Tuesday', 'Mar'], ['Wednesday', 'Mie'],
-                    ['Thursday', 'Jue'], ['Friday', 'Vie'], ['Saturday', 'Sab']
+                // Debe coincidir con Plugin.SupportedLanguages. El primero es
+                // el idioma de respaldo y el que ya lleva el HTML escrito.
+                var SUPPORTED = ['en', 'es'];
+
+                var DAY_KEYS = [
+                    ['Sunday', 'SunShort', 'Sun'], ['Monday', 'MonShort', 'Mon'],
+                    ['Tuesday', 'TueShort', 'Tue'], ['Wednesday', 'WedShort', 'Wed'],
+                    ['Thursday', 'ThuShort', 'Thu'], ['Friday', 'FriShort', 'Fri'],
+                    ['Saturday', 'SatShort', 'Sat']
                 ];
 
                 var page = document.querySelector('#ScheduledAccessConfigPage');
                 var container = page.querySelector('#RulesContainer');
                 var users = [];
+                var strings = {};
                 // Las instantaneas NO se tocan desde aqui: son estado del servidor.
                 // Reenviarlas desde el cliente destruiria el registro del estado
                 // original de cada usuario. El servidor las preserva por su cuenta
                 // en Plugin.UpdateConfiguration.
+
+                function translate(key, fallback) {
+                    return strings[key] || fallback;
+                }
+
+                function normalizeLanguage(tag) {
+                    var base = String(tag || 'en').toLowerCase().split(/[-_]/)[0];
+                    return SUPPORTED.indexOf(base) !== -1 ? base : SUPPORTED[0];
+                }
+
+                // Jellyfin guarda el idioma elegido en las preferencias del
+                // usuario, pero solo si se fijo explicitamente. Si no esta,
+                // el propio cliente web cae al idioma del navegador, y aqui
+                // hacemos lo mismo para no contradecir a la interfaz.
+                function detectLanguage() {
+                    return ApiClient.getDisplayPreferences('usersettings', ApiClient.getCurrentUserId(), 'emby')
+                        .then(function (prefs) {
+                            var chosen = prefs && prefs.CustomPrefs && prefs.CustomPrefs.language;
+                            return normalizeLanguage(chosen || navigator.language);
+                        })
+                        .catch(function () {
+                            return normalizeLanguage(navigator.language);
+                        });
+                }
+
+                function loadStrings(language) {
+                    return ApiClient.ajax({
+                        type: 'GET',
+                        url: ApiClient.getUrl('web/ConfigurationPage', {
+                            name: 'scheduledaccess.' + language + '.json'
+                        }),
+                        dataType: 'json'
+                    }).catch(function () {
+                        // Sin traducciones el HTML se queda en ingles, que es
+                        // exactamente el comportamiento de respaldo buscado.
+                        return {};
+                    });
+                }
+
+                function applyTranslations(root) {
+                    Array.prototype.forEach.call(
+                        root.querySelectorAll('[data-localize]'),
+                        function (el) {
+                            var value = strings[el.getAttribute('data-localize')];
+                            if (value) {
+                                el.textContent = value;
+                            }
+                        });
+                }
 
                 function normalizeDays(days) {
                     if (!days) {
                         return [];
                     }
                     return days.map(function (d) {
-                        return typeof d === 'number' ? DAYS[d][0] : d;
+                        return typeof d === 'number' ? DAY_KEYS[d][0] : d;
                     });
                 }
 
@@ -87,42 +142,44 @@
                     }).join('');
 
                     var selectedDays = normalizeDays(rule.Days);
-                    var dayBoxes = DAYS.map(function (d) {
+                    var dayBoxes = DAY_KEYS.map(function (d) {
                         var checked = selectedDays.indexOf(d[0]) !== -1 ? ' checked' : '';
                         return '<label class="emby-checkbox-label" style="display:inline-block;margin-right:1em;">' +
                             '<input type="checkbox" is="emby-checkbox" class="ruleDay" value="' + d[0] + '"' + checked + ' />' +
-                            '<span>' + d[1] + '</span></label>';
+                            '<span data-localize="' + d[1] + '">' + d[2] + '</span></label>';
                     }).join('');
 
                     var mode = normalizeMode(rule.Mode);
 
                     row.innerHTML =
                         '<div class="selectContainer">' +
-                            '<label class="selectLabel">Usuario</label>' +
+                            '<label class="selectLabel" data-localize="User">User</label>' +
                             '<select is="emby-select" class="ruleUser emby-select-withcolor emby-select">' + userOptions + '</select>' +
                         '</div>' +
                         '<div style="margin:.5em 0 1em 0;">' + dayBoxes + '</div>' +
                         '<div class="selectContainer">' +
-                            '<label class="selectLabel">Modo</label>' +
+                            '<label class="selectLabel" data-localize="Mode">Mode</label>' +
                             '<select is="emby-select" class="ruleMode emby-select-withcolor emby-select">' +
-                                '<option value="Block"' + (mode === 'Block' ? ' selected' : '') + '>Ocultar el contenido con estas etiquetas</option>' +
-                                '<option value="AllowOnly"' + (mode === 'AllowOnly' ? ' selected' : '') + '>Mostrar unicamente el contenido con estas etiquetas</option>' +
+                                '<option value="Block"' + (mode === 'Block' ? ' selected' : '') + ' data-localize="ModeBlock">Hide content with these tags</option>' +
+                                '<option value="AllowOnly"' + (mode === 'AllowOnly' ? ' selected' : '') + ' data-localize="ModeAllowOnly">Show only content with these tags</option>' +
                             '</select>' +
                         '</div>' +
                         '<div class="inputContainer">' +
-                            '<label class="inputLabel inputLabelUnfocused">Etiquetas (separadas por comas)</label>' +
+                            '<label class="inputLabel inputLabelUnfocused" data-localize="Tags">Tags (comma separated)</label>' +
                             '<input type="text" is="emby-input" class="ruleTags" value="' + (rule.Tags || []).join(', ') + '" />' +
-                            '<div class="fieldDescription">' +
-                                'En modo "mostrar unicamente", todo lo que no lleve alguna de estas etiquetas se oculta.' +
+                            '<div class="fieldDescription" data-localize="TagsDescription">' +
+                                'In "show only" mode, anything without one of these tags is hidden.' +
                             '</div>' +
                         '</div>' +
-                        '<button is="emby-button" type="button" class="raised removeRule emby-button"><span>Quitar</span></button>';
+                        '<button is="emby-button" type="button" class="raised removeRule emby-button">' +
+                            '<span data-localize="Remove">Remove</span></button>';
 
                     row.querySelector('.removeRule').addEventListener('click', function () {
                         row.remove();
                     });
 
                     container.appendChild(row);
+                    applyTranslations(row);
                 }
 
                 function collectRules() {
@@ -150,17 +207,25 @@
                 page.addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
 
-                    ApiClient.getUsers().then(function (userList) {
-                        users = userList;
-                        return ApiClient.getPluginConfiguration(pluginUniqueId);
-                    }).then(function (config) {
-                        page.querySelector('#Enabled').checked = config.Enabled;
+                    detectLanguage()
+                        .then(loadStrings)
+                        .then(function (loaded) {
+                            strings = loaded || {};
+                            applyTranslations(page);
+                            return ApiClient.getUsers();
+                        })
+                        .then(function (userList) {
+                            users = userList;
+                            return ApiClient.getPluginConfiguration(pluginUniqueId);
+                        })
+                        .then(function (config) {
+                            page.querySelector('#Enabled').checked = config.Enabled;
 
-                        container.innerHTML = '';
-                        (config.Rules || []).forEach(renderRule);
+                            container.innerHTML = '';
+                            (config.Rules || []).forEach(renderRule);
 
-                        Dashboard.hideLoadingMsg();
-                    });
+                            Dashboard.hideLoadingMsg();
+                        });
                 });
 
                 page.querySelector('#AddRule').addEventListener('click', function () {

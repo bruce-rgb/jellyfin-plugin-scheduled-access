@@ -1,0 +1,23 @@
+{
+  "AddRule": "Añadir regla",
+  "Days": "Días",
+  "EnableDescription": "Mientras esté desactivado, la siguiente ejecución de la tarea restaura las etiquetas originales de todos los usuarios afectados.",
+  "EnableLabel": "Activar restricciones por día",
+  "FriShort": "Vie",
+  "Mode": "Modo",
+  "ModeAllowOnly": "Mostrar únicamente el contenido con estas etiquetas",
+  "ModeBlock": "Ocultar el contenido con estas etiquetas",
+  "MonShort": "Lun",
+  "Remove": "Quitar",
+  "Rules": "Reglas",
+  "RulesDescription": "Cada regla aplica a un usuario en los días marcados. Las etiquetas se heredan de carpetas y colecciones, así que puedes etiquetar una carpeta entera en vez de ítem por ítem.",
+  "SatShort": "Sáb",
+  "Save": "Guardar",
+  "SunShort": "Dom",
+  "Tags": "Etiquetas (separadas por comas)",
+  "TagsDescription": "En modo «mostrar únicamente», todo lo que no lleve alguna de estas etiquetas se oculta.",
+  "ThuShort": "Jue",
+  "TueShort": "Mar",
+  "User": "Usuario",
+  "WedShort": "Mié"
+}

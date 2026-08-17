@@ -30,4 +30,14 @@
     <EmbeddedResource Include="Configuration\configPage.html" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Los archivos de idioma se sirven al navegador como si fueran paginas
+         del plugin: se registran en Plugin.GetPages() y se piden por
+         web/ConfigurationPage?name=... Es la unica via que ofrece Jellyfin
+         para exponer recursos propios de un plugin sin escribir un
+         controlador de API. -->
+    <None Remove="Locale\*.json" />
+    <EmbeddedResource Include="Locale\*.json" />
+  </ItemGroup>
+
 </Project>

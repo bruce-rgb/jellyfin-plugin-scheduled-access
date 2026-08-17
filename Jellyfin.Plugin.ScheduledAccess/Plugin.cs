@@ -38,12 +38,21 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public override Guid Id => Guid.Parse("65e8ae1e-ea44-4b8c-a2c7-16f46a158eb4");
 
     /// <inheritdoc />
-    public override string Description => "Restringe el acceso a bibliotecas segun el dia de la semana.";
+    public override string Description => "Restricts what content each user can see based on the day of the week, using library tags.";
 
     /// <summary>
     /// Gets the current plugin instance.
     /// </summary>
     public static Plugin? Instance { get; private set; }
+
+    /// <summary>
+    /// Gets the languages shipped with the plugin. The first one is the
+    /// fallback used when the user's language has no translation file.
+    /// </summary>
+    /// <remarks>
+    /// Must be kept in sync with the SUPPORTED array in configPage.html.
+    /// </remarks>
+    public static IReadOnlyList<string> SupportedLanguages { get; } = ["en", "es"];
 
     /// <inheritdoc />
     /// <remarks>
@@ -75,15 +84,34 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Besides the configuration page, this registers one entry per language
+    /// file. Jellyfin has no localization framework for plugins, and it does
+    /// not expose its own <c>Globalize</c> module to plugin pages, so the
+    /// translations have to be served and applied by the plugin itself.
+    ///
+    /// Registering them here serves them at
+    /// <c>web/ConfigurationPage?name={Name}</c>, which is the only way to
+    /// expose a plugin's own resources over HTTP without writing an API
+    /// controller.
+    /// </remarks>
     public IEnumerable<PluginPageInfo> GetPages()
     {
-        return
-        [
-            new PluginPageInfo
+        yield return new PluginPageInfo
+        {
+            Name = Name,
+            EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
+        };
+
+        foreach (var language in SupportedLanguages)
+        {
+            yield return new PluginPageInfo
             {
-                Name = Name,
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
-            }
-        ];
+                // El nombre lleva prefijo del plugin porque el espacio de
+                // nombres de paginas es global a todo el servidor.
+                Name = string.Format(CultureInfo.InvariantCulture, "scheduledaccess.{0}.json", language),
+                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Locale.{1}.json", GetType().Namespace, language)
+            };
+        }
     }
 }

@@ -1,0 +1,23 @@
+{
+  "AddRule": "Add rule",
+  "Days": "Days",
+  "EnableDescription": "While disabled, the next task run restores every affected user's original tags.",
+  "EnableLabel": "Enable day-of-week restrictions",
+  "FriShort": "Fri",
+  "Mode": "Mode",
+  "ModeAllowOnly": "Show only content with these tags",
+  "ModeBlock": "Hide content with these tags",
+  "MonShort": "Mon",
+  "Remove": "Remove",
+  "Rules": "Rules",
+  "RulesDescription": "Each rule applies to one user on the days you check. Tags are inherited from parent folders and collections, so you can tag a whole folder instead of item by item.",
+  "SatShort": "Sat",
+  "Save": "Save",
+  "SunShort": "Sun",
+  "Tags": "Tags (comma separated)",
+  "TagsDescription": "In \"show only\" mode, anything without one of these tags is hidden.",
+  "ThuShort": "Thu",
+  "TueShort": "Tue",
+  "User": "User",
+  "WedShort": "Wed"
+}

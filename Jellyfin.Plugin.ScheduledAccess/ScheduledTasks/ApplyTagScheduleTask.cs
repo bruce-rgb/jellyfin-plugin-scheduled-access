@@ -35,14 +35,20 @@ public class ApplyTagScheduleTask : IScheduledTask
         _logger = logger;
     }
 
+    // Estas cadenas y las del log van en ingles a proposito. El nombre de una
+    // tarea programada es unico para todo el servidor, no por usuario, asi que
+    // no admite localizacion: mostrarlo en ingles es la convencion del
+    // ecosistema. Lo que si se localiza es la pagina de configuracion, que es
+    // lo que ve cada usuario.
+
     /// <inheritdoc />
-    public string Name => "Aplicar restricciones por dia";
+    public string Name => "Apply day-of-week restrictions";
 
     /// <inheritdoc />
     public string Key => "ScheduledAccessApplyTags";
 
     /// <inheritdoc />
-    public string Description => "Ajusta las etiquetas permitidas o bloqueadas de cada usuario segun el dia de la semana.";
+    public string Description => "Adjusts each user's allowed or blocked tags according to the day of the week.";
 
     /// <inheritdoc />
     public string Category => "Scheduled Access";
@@ -79,7 +85,7 @@ public class ApplyTagScheduleTask : IScheduledTask
         var plugin = Plugin.Instance;
         if (plugin is null)
         {
-            _logger.LogWarning("La instancia del plugin no esta disponible; se omite la ejecucion");
+            _logger.LogWarning("Plugin instance is not available; skipping run");
             return;
         }
 
@@ -158,14 +164,14 @@ public class ApplyTagScheduleTask : IScheduledTask
         var user = _userManager.GetUserById(rule.UserId);
         if (user is null)
         {
-            _logger.LogWarning("La regla apunta a un usuario inexistente {UserId}; se ignora", rule.UserId);
+            _logger.LogWarning("Rule targets a non-existent user {UserId}; ignoring it", rule.UserId);
             return false;
         }
 
         var policy = _userManager.GetUserDto(user).Policy;
         if (policy is null)
         {
-            _logger.LogWarning("No se pudo leer la politica de {Username}", user.Username);
+            _logger.LogWarning("Could not read the policy for {Username}", user.Username);
             return false;
         }
 
@@ -186,7 +192,7 @@ public class ApplyTagScheduleTask : IScheduledTask
             snapshots.Add(snapshot);
 
             _logger.LogInformation(
-                "Instantanea de politica guardada para {Username} (permitidas={Allowed}, bloqueadas={Blocked})",
+                "Policy snapshot saved for {Username} (allowed={Allowed}, blocked={Blocked})",
                 user.Username,
                 snapshot.AllowedTags.Length,
                 snapshot.BlockedTags.Length);
@@ -208,7 +214,7 @@ public class ApplyTagScheduleTask : IScheduledTask
         await _userManager.UpdatePolicyAsync(rule.UserId, policy).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "Restriccion aplicada a {Username} para {Day} en modo {Mode} con {Count} etiquetas",
+            "Restriction applied to {Username} for {Day} in {Mode} mode with {Count} tags",
             user.Username,
             today,
             rule.Mode,
@@ -233,7 +239,7 @@ public class ApplyTagScheduleTask : IScheduledTask
         {
             // El usuario ya no existe: no hay politica que restaurar, asi que
             // la instantanea solo es ruido.
-            _logger.LogInformation("Instantanea huerfana descartada para {UserId}", snapshot.UserId);
+            _logger.LogInformation("Discarded orphaned snapshot for {UserId}", snapshot.UserId);
             return true;
         }
 
@@ -241,7 +247,7 @@ public class ApplyTagScheduleTask : IScheduledTask
         if (policy is null)
         {
             _logger.LogWarning(
-                "No se pudo leer la politica de {Username}; se conserva la instantanea para reintentar",
+                "Could not read the policy for {Username}; keeping the snapshot to retry",
                 user.Username);
             return false;
         }
@@ -251,7 +257,7 @@ public class ApplyTagScheduleTask : IScheduledTask
 
         await _userManager.UpdatePolicyAsync(snapshot.UserId, policy).ConfigureAwait(false);
 
-        _logger.LogInformation("Politica restaurada para {Username}", user.Username);
+        _logger.LogInformation("Policy restored for {Username}", user.Username);
         return true;
     }
 }

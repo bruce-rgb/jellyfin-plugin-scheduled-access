@@ -165,6 +165,28 @@ You can also run it manually from **Dashboard → Scheduled Tasks → Aplicar re
 
 ---
 
+## Localisation
+
+The configuration page ships in **English and Spanish**, picking the language automatically.
+
+> **Jellyfin has no localisation framework for plugins.** It doesn't expose its `Globalize` module to plugin pages either — only `ApiClient`, `Dashboard` and `Emby` are on `window`. So the translations are served and applied by the plugin itself, following the pattern used across the community.
+
+How it fits together:
+
+1. **`Locale/en.json`, `Locale/es.json`** — flat key/value files, embedded as resources.
+2. **`Plugin.GetPages()`** registers one entry per language alongside the config page. That's the only way to expose a plugin's own files over HTTP without writing an API controller. They end up served at `web/ConfigurationPage?name=scheduledaccess.<lang>.json`, with `Content-Type: application/json`.
+3. **`data-localize` attributes** in the HTML, whose text is the **English fallback**. If the fetch fails, the page stays in readable English instead of showing raw keys.
+4. **Language detection** mirrors what jellyfin-web does: read the user's explicit choice from `DisplayPreferences.CustomPrefs.language`, and fall back to `navigator.language` when it isn't set — which is the common case, since the setting is only stored once the user picks a language by hand.
+
+### Adding a language
+
+1. Copy `Locale/en.json` to `Locale/<code>.json` and translate the values.
+2. Add the code to `Plugin.SupportedLanguages` **and** to the `SUPPORTED` array in `configPage.html`. Both lists must agree.
+
+The `csproj` globs `Locale\*.json`, so no build change is needed.
+
+---
+
 ## Development
 
 ### Building
@@ -416,7 +438,7 @@ This plugin only adds value when the user **should** be able to sign in that day
 
 ## Status and known limitations
 
-- **The plugin's UI and log messages are in Spanish.** The configuration page and the scheduled task name are not localised yet. Contributions welcome.
+- **The scheduled task name is English-only.** Jellyfin exposes a task's name as a single server-wide string, not per user, so it can't be localised. The configuration page *is* localised — see below.
 - **Rules apply to administrator accounts too** (verified on 10.11.11). Unlike other Jellyfin parental controls, tag filtering doesn't exempt admins: if you apply a rule to yourself, you'll see the same trimmed library as anyone else. Be careful not to lock yourself out of content you need.
 - The version shown by the plugin manager reads `0.0.0.0` on manual installs, because it comes from the manifest rather than the assembly. Cosmetic, and only during development.
 - Rules don't validate overlaps: if two rules target the same user and day, the last one applied wins.

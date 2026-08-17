@@ -165,6 +165,28 @@ También puedes lanzarla a mano desde **Panel de control → Tareas programadas 
 
 ---
 
+## Localización
+
+La página de configuración viene en **inglés y español**, y elige el idioma automáticamente.
+
+> **Jellyfin no tiene un framework de localización para plugins.** Tampoco expone su módulo `Globalize` a las páginas de plugin: en `window` solo hay `ApiClient`, `Dashboard` y `Emby`. Así que las traducciones las sirve y las aplica el propio plugin, siguiendo el patrón habitual de la comunidad.
+
+Cómo encaja todo:
+
+1. **`Locale/en.json`, `Locale/es.json`** — archivos planos clave/valor, embebidos como recursos.
+2. **`Plugin.GetPages()`** registra una entrada por idioma junto a la página de configuración. Es la única forma de exponer archivos propios de un plugin por HTTP sin escribir un controlador de API. Acaban servidos en `web/ConfigurationPage?name=scheduledaccess.<lang>.json`, con `Content-Type: application/json`.
+3. **Atributos `data-localize`** en el HTML, cuyo texto es el **respaldo en inglés**. Si la descarga falla, la página se queda en inglés legible en vez de mostrar claves sueltas.
+4. **La detección de idioma** replica lo que hace jellyfin-web: leer la elección explícita del usuario en `DisplayPreferences.CustomPrefs.language` y caer a `navigator.language` cuando no está — que es el caso habitual, porque esa preferencia solo se guarda si el usuario elige idioma a mano.
+
+### Añadir un idioma
+
+1. Copia `Locale/en.json` a `Locale/<codigo>.json` y traduce los valores.
+2. Añade el código a `Plugin.SupportedLanguages` **y** al array `SUPPORTED` de `configPage.html`. Las dos listas deben coincidir.
+
+El `csproj` incluye `Locale\*.json` por patrón, así que no hay que tocar la compilación.
+
+---
+
 ## Desarrollo
 
 ### Compilar
@@ -416,7 +438,7 @@ Este plugin solo aporta valor cuando el usuario **sí debe poder entrar** ese d�
 
 ## Estado y limitaciones conocidas
 
-- **La interfaz y los mensajes de log están en español.** La página de configuración y el nombre de la tarea programada no están localizados. Se aceptan contribuciones.
+- **El nombre de la tarea programada solo existe en inglés.** Jellyfin expone el nombre de una tarea como una única cadena para todo el servidor, no por usuario, así que no admite localización. La página de configuración **sí** está localizada — ver más abajo.
 - **Las reglas también aplican a cuentas de administrador** (verificado en 10.11.11). A diferencia de otros controles parentales de Jellyfin, el filtrado por etiquetas no exime a los admin: si te aplicas una regla a ti mismo, verás la biblioteca recortada igual que cualquier otro usuario. Ten cuidado de no dejarte fuera del contenido que necesitas.
 - La versión que muestra el gestor de complementos sale como `0.0.0.0` en instalaciones manuales, porque se lee del manifiesto y no del ensamblado. Es cosmético en desarrollo.
 - Las reglas no validan solapamientos: si dos reglas apuntan al mismo usuario y día, gana la última en aplicarse.
