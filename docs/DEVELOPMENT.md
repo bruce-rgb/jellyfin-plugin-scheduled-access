@@ -26,6 +26,28 @@ if (!skipAllowedTagsCheck && allowedTagsPreference.Length != 0 &&
 
 The plugin **does not filter content itself**: it rewrites the user's `AllowedTags` / `BlockedTags` / `EnabledFolders` according to the current day and time, and lets the server do the rest.
 
+```mermaid
+flowchart LR
+    subgraph plugin ["This plugin"]
+        direction TB
+        Rules["Rules<br/>user · days · slot<br/>tags · libraries"]
+        Enforcer["ScheduleEnforcer"]
+        Rules --> Enforcer
+    end
+
+    subgraph core ["Jellyfin core"]
+        direction TB
+        Policy["UserPolicy<br/>AllowedTags · BlockedTags<br/>EnabledFolders"]
+        Filter["BaseItem.IsVisibleViaTags"]
+        Policy --> Filter
+    end
+
+    Enforcer -->|writes| Policy
+    Filter --> Seen["What the user sees"]
+```
+
+The arrow marked *writes* is the whole integration surface. Nothing is intercepted, patched or proxied, which is why the plugin survives server upgrades that don't change `UserPolicy`.
+
 Two consequences worth knowing:
 
 - **`GetInheritedTags()`**: tags are inherited from parent folders and collections.
@@ -38,6 +60,39 @@ Before applying the first restriction to a user, the plugin saves a **snapshot**
 This isn't incidental — it's the critical safety mechanism. Without it, if the server were shut down mid-slot with a restriction in place, the user would stay restricted **indefinitely**: there would be no way to know their original state. With the snapshot on disk, the next run undoes it.
 
 The desired state is **always computed from the snapshot**, never from the current policy. That makes the pass idempotent: running it a hundred times doesn't accumulate tags, which matters because with time slots it runs far more often than it used to.
+
+```mermaid
+flowchart TD
+    Start(["ApplyAsync(now)"]) --> Resolve["ScheduleResolver.ActiveRules(now)<br/>at most one rule per user"]
+
+    Resolve --> P1{{"Phase 1 — for each active rule"}}
+    P1 --> Has{"Snapshot for<br/>this user?"}
+    Has -->|no| Take["Capture the original policy<br/>tags + libraries"]
+    Has -->|yes| Desired
+    Take --> Desired["Compute desired state<br/>FROM THE SNAPSHOT"]
+    Desired --> Changed{"Differs from<br/>current policy?"}
+    Changed -->|no| Mark
+    Changed -->|yes| Write["UpdatePolicyAsync"]
+    Write --> Mark["Record user as restricted"]
+
+    Mark --> P2{{"Phase 2 — for each snapshot"}}
+    P2 --> Backed{"Backs a restriction<br/>in force right now?"}
+    Backed -->|yes| Keep["Leave it alone"]
+    Backed -->|no| Restore["Restore the original policy"]
+    Restore --> Ok{"Restore<br/>succeeded?"}
+    Ok -->|yes| Drop["Discard the snapshot"]
+    Ok -->|no| Retry["Keep it — retry next boundary"]
+
+    Keep --> Save
+    Drop --> Save
+    Retry --> Save
+    Save(["Persist config"])
+```
+
+Two things in that diagram are the invariants below, drawn:
+
+- **Phase 2 iterates snapshots, not rules.** A deleted rule disappears from phase 1 but its snapshot still gets walked, so the restriction is undone.
+- **The snapshot is only taken when there isn't one.** Chaining two slots back to back never re-captures, so an already-restricted policy can't be recorded as the original.
 
 #### Three invariants that must hold
 
@@ -114,6 +169,24 @@ Each sleep is capped at one hour as a safety net: if the machine suspends, the c
 The `Apply day-of-week restrictions` scheduled task remains, with only a startup and a daily trigger. It's a manual button for diagnosis and a daily fallback in case the watcher fails to start — not the thing that switches slots.
 
 Both call the same `ScheduleEnforcer`, the only code that writes policies, and it serialises its runs behind a semaphore. Two concurrent passes could interleave reading and writing snapshots and record an already-restricted state as the original — invariant 2, from the other direction.
+
+```mermaid
+flowchart LR
+    Boundary["Slot boundary reached"] --> Watcher
+    Cap["Hourly cap<br/>drift safety net"] --> Watcher
+    Saved["Config saved<br/>ConfigurationUpdated"] -->|cancels the sleep| Watcher["ScheduleWatcher<br/>IHostedService"]
+
+    Startup["Server startup"] --> Task
+    Daily["Daily 00:00<br/>fallback"] --> Task["Scheduled task<br/>also a manual button"]
+
+    Watcher --> Gate
+    Task --> Gate{{"Semaphore<br/>one pass at a time"}}
+    Gate --> Enforcer["ScheduleEnforcer"]
+```
+
+The watcher is what actually switches slots; the scheduled task is a manual button and a fallback for the case where the hosted service never starts. They can fire at the same moment — a server restart triggers both — which is why the semaphore isn't optional.
+
+The watcher's loop is: apply for *now*, ask the resolver when the next boundary falls, sleep until then (capped at an hour), repeat. A pass with nothing to change writes nothing, so the extra wake-ups from that cap cost nothing.
 
 Disabling the plugin (`Enabled = false`) **leaves no restrictions dangling**: the next run restores every pending snapshot and discards them.
 
