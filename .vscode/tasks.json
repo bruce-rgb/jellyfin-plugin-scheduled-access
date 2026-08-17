@@ -33,13 +33,19 @@
       "problemMatcher": "$msCompile"
     },
     {
-      // Detiene el servicio, copia la DLL y lo vuelve a arrancar.
+      // Detiene el servicio, copia la DLL, ajusta permisos y lo rearranca.
       //
       // Va todo dentro de UNA sola elevacion por dos motivos:
       //  1. Jellyfin mantiene la DLL bloqueada mientras corre, asi que copiar
       //     con el servicio arriba falla con IOException.
       //  2. Parar/arrancar un servicio exige privilegios de administrador, y
-      //     agrupar las tres operaciones evita encadenar varios avisos de UAC.
+      //     agrupar las operaciones evita encadenar varios avisos de UAC.
+      //
+      // El icacls final NO es opcional. Por la regla CREATOR OWNER, la carpeta
+      // creada aqui queda en poder del usuario de Windows que la crea, y el
+      // servicio (NT AUTHORITY\NETWORK SERVICE) solo hereda lectura. El plugin
+      // carga bien, pero desinstalarlo o actualizarlo desde el panel falla
+      // porque el servicio no puede borrar sus propios archivos.
       //
       // Aceptar el UAC es manual: no hay forma de evitarlo sin instalar
       // Jellyfin en modo usuario.
@@ -51,7 +57,7 @@
           "args": ["-NoProfile", "-Command"]
         }
       },
-      "command": "$dest = '${config:jellyfinDataDir}/plugins/${config:pluginName}'; $src = '${workspaceFolder}/${config:pluginName}/bin/Debug/net9.0/publish/*'; $inner = \"New-Item -ItemType Directory -Force -Path '$dest' | Out-Null; Stop-Service JellyfinServer; Start-Sleep -Seconds 3; Copy-Item -Force -Path '$src' -Destination '$dest'; Start-Service JellyfinServer\"; Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command',$inner -Wait; 'servicio: ' + (Get-Service JellyfinServer).Status",
+      "command": "$dest = '${config:jellyfinDataDir}/plugins/${config:pluginName}'; $src = '${workspaceFolder}/${config:pluginName}/bin/Debug/net9.0/publish/*'; $inner = \"New-Item -ItemType Directory -Force -Path '$dest' | Out-Null; Stop-Service JellyfinServer; Start-Sleep -Seconds 3; Copy-Item -Force -Path '$src' -Destination '$dest'; icacls '$dest' /grant 'NT AUTHORITY\\NETWORK SERVICE:(OI)(CI)F' /T | Out-Null; Start-Service JellyfinServer\"; Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command',$inner -Wait; 'servicio: ' + (Get-Service JellyfinServer).Status",
       "problemMatcher": []
     },
     {

@@ -172,6 +172,23 @@ Las tareas se lanzan con `Ctrl+Shift+P → Tasks: Run Task`. `Ctrl+Shift+B` es u
 
 Copia también el `.pdb`: es lo que permite poner breakpoints.
 
+> **Por qué la tarea ejecuta `icacls` al final.** Por la regla `CREATOR OWNER` de Windows, la carpeta del plugin queda en poder del usuario que la crea — tú, al desplegar. El servicio corre como `NT AUTHORITY\NETWORK SERVICE` y solo hereda `BUILTIN\Usuarios:(RX)`: lectura y ejecución, **sin permiso de borrado**.
+>
+> El síntoma es engañoso, porque el plugin **carga sin problemas**. Lo que falla es **desinstalarlo o actualizarlo desde el panel**: el servicio no puede borrar unos archivos que no le pertenecen. Se diagnostica comparando las ACL:
+>
+> ```powershell
+> icacls "$env:ProgramData\Jellyfin\Server\plugins"
+> icacls "$env:ProgramData\Jellyfin\Server\plugins\Jellyfin.Plugin.ScheduledAccess"
+> ```
+>
+> Si en la segunda no aparece `NETWORK SERVICE`, es esto. Se arregla con:
+>
+> ```powershell
+> icacls "<carpeta del plugin>" /grant "NT AUTHORITY\NETWORK SERVICE:(OI)(CI)F" /T
+> ```
+>
+> Los plugins instalados desde un repositorio no sufren esto: los crea el propio servicio, así que ya los posee.
+
 Las rutas se configuran en [.vscode/settings.json](.vscode/settings.json). `jellyfinDataDir` debe apuntar al data dir **real** del servidor, que depende del modo de instalación:
 
 | Instalación | Data dir |
