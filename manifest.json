@@ -9,6 +9,14 @@
     "imageUrl": "",
     "versions": [
       {
+        "version": "1.1.0.0",
+        "changelog": "Ver el release v1.1.0.0 para los detalles.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/bruce-rgb/jellyfin-plugin-scheduled-access/releases/download/v1.1.0.0/scheduled-access_1.1.0.0.zip",
+        "checksum": "88ac518618bea0b411b3ecb7dad3b434",
+        "timestamp": "2026-08-17 16:50:49"
+      },
+      {
         "version": "1.0.0.0",
         "changelog": "Ver el release v1.0.0.0 para los detalles.",
         "targetAbi": "10.11.0.0",
