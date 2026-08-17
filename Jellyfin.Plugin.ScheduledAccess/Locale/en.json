@@ -5,6 +5,8 @@
   "EnableDescription": "While disabled, the next task run restores every affected user's original tags.",
   "EnableLabel": "Enable day-of-week restrictions",
   "FriShort": "Fri",
+  "Libraries": "Libraries",
+  "LibrariesDescription": "Check none to leave library access untouched. Check some and only those are visible while the rule is active; tag filtering still applies inside them.",
   "Mode": "Mode",
   "ModeAllowOnly": "Show only content with these tags",
   "ModeBlock": "Hide content with these tags",

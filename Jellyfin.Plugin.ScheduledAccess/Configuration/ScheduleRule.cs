@@ -63,6 +63,17 @@ public class ScheduleRule
     /// Gets or sets las etiquetas a bloquear o permitir, segun <see cref="Mode"/>.
     /// </summary>
     public string[] Tags { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets las unicas bibliotecas visibles mientras la regla este activa.
+    /// </summary>
+    /// <remarks>
+    /// Vacio significa no tocar las bibliotecas, que es lo que necesitan las
+    /// reglas guardadas por versiones anteriores y las que solo filtran por
+    /// etiquetas. Los dos filtros son independientes y se combinan: se puede
+    /// limitar a una biblioteca y ademas filtrar por etiquetas dentro de ella.
+    /// </remarks>
+    public Guid[] LibraryIds { get; set; } = Array.Empty<Guid>();
 }
 
 #pragma warning restore CA1819

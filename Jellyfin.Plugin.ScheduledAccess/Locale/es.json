@@ -5,6 +5,8 @@
   "EnableDescription": "Mientras esté desactivado, la siguiente ejecución de la tarea restaura las etiquetas originales de todos los usuarios afectados.",
   "EnableLabel": "Activar restricciones por día",
   "FriShort": "Vie",
+  "Libraries": "Bibliotecas",
+  "LibrariesDescription": "No marques ninguna para no tocar el acceso a bibliotecas. Si marcas algunas, solo esas serán visibles mientras la regla esté activa; el filtro por etiquetas sigue aplicando dentro de ellas.",
   "Mode": "Modo",
   "ModeAllowOnly": "Mostrar únicamente el contenido con estas etiquetas",
   "ModeBlock": "Ocultar el contenido con estas etiquetas",

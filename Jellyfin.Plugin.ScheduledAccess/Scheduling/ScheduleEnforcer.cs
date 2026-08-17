@@ -155,16 +155,21 @@ public class ScheduleEnforcer : IDisposable
             {
                 UserId = rule.UserId,
                 AllowedTags = policy.AllowedTags.ToArray(),
-                BlockedTags = policy.BlockedTags.ToArray()
+                BlockedTags = policy.BlockedTags.ToArray(),
+                HasFolderState = true,
+                EnableAllFolders = policy.EnableAllFolders,
+                EnabledFolders = policy.EnabledFolders.ToArray()
             };
 
             snapshots.Add(snapshot);
 
             _logger.LogInformation(
-                "Policy snapshot saved for {Username} (allowed={Allowed}, blocked={Blocked})",
+                "Policy snapshot saved for {Username} (allowed={Allowed}, blocked={Blocked}, allFolders={AllFolders}, folders={Folders})",
                 user.Username,
                 snapshot.AllowedTags.Length,
-                snapshot.BlockedTags.Length);
+                snapshot.BlockedTags.Length,
+                snapshot.EnableAllFolders,
+                snapshot.EnabledFolders.Length);
         }
 
         // El estado deseado se calcula SIEMPRE desde la instantanea, nunca
@@ -177,26 +182,41 @@ public class ScheduleEnforcer : IDisposable
             ? snapshot.BlockedTags.Union(rule.Tags, StringComparer.OrdinalIgnoreCase).ToArray()
             : snapshot.BlockedTags.ToArray();
 
+        // Sin bibliotecas en la regla se devuelven las de la instantanea, no se
+        // dejan como esten: asi quitar las bibliotecas de una regla las
+        // restaura, igual que quitar etiquetas.
+        var restrictsLibraries = rule.LibraryIds.Length > 0;
+        var desiredAllFolders = restrictsLibraries ? false : snapshot.EnableAllFolders;
+        var desiredFolders = restrictsLibraries
+            ? rule.LibraryIds.ToArray()
+            : snapshot.EnabledFolders.ToArray();
+
         // Con franjas horarias esta pasada corre muchas mas veces que antes, y
         // casi siempre sin cambios. Escribir la politica invalida cachés del
         // servidor y genera ruido en el log, asi que solo se escribe si algo
         // cambia de verdad.
-        if (SameTags(policy.AllowedTags, desiredAllowed) && SameTags(policy.BlockedTags, desiredBlocked))
+        if (SameTags(policy.AllowedTags, desiredAllowed)
+            && SameTags(policy.BlockedTags, desiredBlocked)
+            && policy.EnableAllFolders == desiredAllFolders
+            && SameGuids(policy.EnabledFolders, desiredFolders))
         {
             return true;
         }
 
         policy.AllowedTags = desiredAllowed;
         policy.BlockedTags = desiredBlocked;
+        policy.EnableAllFolders = desiredAllFolders;
+        policy.EnabledFolders = desiredFolders;
 
         await _userManager.UpdatePolicyAsync(rule.UserId, policy).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "Restriction applied to {Username} at {Time} in {Mode} mode with {Count} tags",
+            "Restriction applied to {Username} at {Time} in {Mode} mode with {Tags} tags and {Libraries} libraries",
             user.Username,
             moment.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture),
             rule.Mode,
-            rule.Tags.Length);
+            rule.Tags.Length,
+            restrictsLibraries ? rule.LibraryIds.Length : 0);
 
         return true;
     }
@@ -233,6 +253,21 @@ public class ScheduleEnforcer : IDisposable
         policy.AllowedTags = snapshot.AllowedTags.ToArray();
         policy.BlockedTags = snapshot.BlockedTags.ToArray();
 
+        // Las bibliotecas solo se tocan si la instantanea las capturo. Una
+        // guardada por una version anterior no las lleva, y aplicar sus valores
+        // por defecto dejaria al usuario sin acceso a ninguna.
+        if (snapshot.HasFolderState)
+        {
+            policy.EnableAllFolders = snapshot.EnableAllFolders;
+            policy.EnabledFolders = snapshot.EnabledFolders.ToArray();
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Snapshot for {Username} predates library support; restoring tags only and leaving libraries untouched",
+                user.Username);
+        }
+
         await _userManager.UpdatePolicyAsync(snapshot.UserId, policy).ConfigureAwait(false);
 
         _logger.LogInformation("Policy restored for {Username}", user.Username);
@@ -242,6 +277,9 @@ public class ScheduleEnforcer : IDisposable
     private static bool SameTags(string[] left, string[] right)
         => left.Length == right.Length
             && !left.Except(right, StringComparer.OrdinalIgnoreCase).Any();
+
+    private static bool SameGuids(Guid[] left, Guid[] right)
+        => left.Length == right.Length && !left.Except(right).Any();
 
     /// <inheritdoc />
     public void Dispose()

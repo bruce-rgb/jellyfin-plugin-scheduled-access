@@ -60,6 +60,7 @@
                 var page = document.querySelector('#ScheduledAccessConfigPage');
                 var container = page.querySelector('#RulesContainer');
                 var users = [];
+                var libraries = [];
                 var strings = {};
                 // Las instantaneas NO se tocan desde aqui: son estado del servidor.
                 // Reenviarlas desde el cliente destruiria el registro del estado
@@ -148,6 +149,24 @@
                     return Math.max(0, Math.min(1439, (h * 60) + m));
                 }
 
+                // Los ItemId de las bibliotecas llegan sin guiones, pero tanto
+                // XmlSerializer como System.Text.Json esperan el formato con
+                // guiones al deserializar un Guid. Sin esto la regla se guarda
+                // sin bibliotecas y en silencio.
+                function toGuid(id) {
+                    var s = String(id || '').replace(/-/g, '');
+                    if (s.length !== 32) {
+                        return String(id || '');
+                    }
+                    return s.slice(0, 8) + '-' + s.slice(8, 12) + '-' + s.slice(12, 16) +
+                        '-' + s.slice(16, 20) + '-' + s.slice(20);
+                }
+
+                function sameGuid(a, b) {
+                    return String(a || '').replace(/-/g, '').toLowerCase() ===
+                        String(b || '').replace(/-/g, '').toLowerCase();
+                }
+
                 function renderRule(rule) {
                     var row = document.createElement('div');
                     row.className = 'ScheduledAccessRule';
@@ -164,6 +183,17 @@
                         return '<label class="emby-checkbox-label" style="display:inline-block;margin-right:1em;">' +
                             '<input type="checkbox" is="emby-checkbox" class="ruleDay" value="' + d[0] + '"' + checked + ' />' +
                             '<span data-localize="' + d[1] + '">' + d[2] + '</span></label>';
+                    }).join('');
+
+                    var selectedLibraries = rule.LibraryIds || [];
+                    var libraryBoxes = libraries.map(function (lib) {
+                        var checked = selectedLibraries.some(function (id) {
+                            return sameGuid(id, lib.ItemId);
+                        }) ? ' checked' : '';
+                        return '<label class="emby-checkbox-label" style="display:inline-block;margin-right:1em;">' +
+                            '<input type="checkbox" is="emby-checkbox" class="ruleLibrary" value="' +
+                            toGuid(lib.ItemId) + '"' + checked + ' />' +
+                            '<span>' + lib.Name + '</span></label>';
                     }).join('');
 
                     var mode = normalizeMode(rule.Mode);
@@ -188,6 +218,14 @@
                                 'Leave both at 00:00 to cover the whole day. If the end is earlier than the start ' +
                                 'the slot runs past midnight, and the checked day is the one it starts on. ' +
                                 'When slots overlap, the shortest one wins.' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="inputContainer">' +
+                            '<label class="inputLabel inputLabelUnfocused" data-localize="Libraries">Libraries</label>' +
+                            '<div style="margin:.5em 0;">' + libraryBoxes + '</div>' +
+                            '<div class="fieldDescription" data-localize="LibrariesDescription">' +
+                                'Check none to leave library access untouched. Check some and only those are ' +
+                                'visible while the rule is active; tag filtering still applies inside them.' +
                             '</div>' +
                         '</div>' +
                         '<div class="selectContainer">' +
@@ -228,13 +266,18 @@
                                 .map(function (t) { return t.trim(); })
                                 .filter(function (t) { return t.length > 0; });
 
+                            var libraryIds = Array.prototype.filter
+                                .call(row.querySelectorAll('.ruleLibrary'), function (c) { return c.checked; })
+                                .map(function (c) { return c.value; });
+
                             return {
                                 UserId: row.querySelector('.ruleUser').value,
                                 Mode: row.querySelector('.ruleMode').value,
                                 StartMinutes: timeToMinutes(row.querySelector('.ruleStart').value),
                                 EndMinutes: timeToMinutes(row.querySelector('.ruleEnd').value),
                                 Days: days,
-                                Tags: tags
+                                Tags: tags,
+                                LibraryIds: libraryIds
                             };
                         });
                 }
@@ -251,6 +294,10 @@
                         })
                         .then(function (userList) {
                             users = userList;
+                            return ApiClient.getVirtualFolders();
+                        })
+                        .then(function (folders) {
+                            libraries = folders || [];
                             return ApiClient.getPluginConfiguration(pluginUniqueId);
                         })
                         .then(function (config) {
@@ -273,7 +320,8 @@
                         StartMinutes: 0,
                         EndMinutes: 0,
                         Days: [],
-                        Tags: []
+                        Tags: [],
+                        LibraryIds: []
                     });
                 });
 
