@@ -22,14 +22,17 @@ namespace Jellyfin.Plugin.ScheduledAccess.ScheduledTasks;
 public class ApplyTagScheduleTask : IScheduledTask
 {
     private readonly ScheduleEnforcer _enforcer;
+    private readonly PlaybackGuard _guard;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ApplyTagScheduleTask"/> class.
     /// </summary>
     /// <param name="enforcer">Instance of the <see cref="ScheduleEnforcer"/>.</param>
-    public ApplyTagScheduleTask(ScheduleEnforcer enforcer)
+    /// <param name="guard">Instance of the <see cref="PlaybackGuard"/>.</param>
+    public ApplyTagScheduleTask(ScheduleEnforcer enforcer, PlaybackGuard guard)
     {
         _enforcer = enforcer;
+        _guard = guard;
     }
 
     // Estas cadenas y las del log van en ingles a proposito. El nombre de una
@@ -72,7 +75,10 @@ public class ApplyTagScheduleTask : IScheduledTask
     {
         ArgumentNullException.ThrowIfNull(progress);
 
-        await _enforcer.ApplyAsync(DateTime.Now, cancellationToken).ConfigureAwait(false);
+        var now = DateTime.Now;
+
+        await _enforcer.ApplyAsync(now, cancellationToken).ConfigureAwait(false);
+        await _guard.EnforceAsync(now, cancellationToken).ConfigureAwait(false);
 
         progress.Report(100);
     }

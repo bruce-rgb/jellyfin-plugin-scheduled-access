@@ -8,6 +8,38 @@ not for the person who wrote the code.
 Headings must stay at `## <version>` with the four-part version exactly as
 tagged, because the workflow extracts the section by matching that line.
 
+## 1.3.0.0
+
+### Added
+- Stopping playback in progress. A stream that was already open keeps playing
+  even after a rule hides it, because Jellyfin authorises playback once and
+  does not re-check it. Turn on "Stop playback when a rule hides what is
+  playing" and the plugin sends the player a message and a stop command.
+- A warning before the cut, configurable in minutes. Zero keeps the old
+  behaviour of cutting without notice.
+
+### Fixed
+- Slots could switch up to an hour late, or not at all until the next hourly
+  pass. The watcher woke a fraction of a millisecond before the boundary, read
+  the rule as not yet in force, and then skipped that boundary as already
+  past. Present since time slots were introduced in 1.2.0.0; the more precise
+  the slot, the more likely it was to be missed.
+- Saving the configuration while the plugin was mid-pass could fail with an
+  error instead of saving.
+
+### Notes
+- Off by default. Existing installations behave exactly as before until the
+  setting is ticked.
+- The cut happens when a restriction **starts**, not when a slot ends: at the
+  end of a slot the content is allowed again, so there is nothing to stop.
+- Clients that do not accept remote control ignore both the message and the
+  stop, and there is no way for the server to force them. The plugin records
+  that in the log instead of failing silently.
+- Messages follow the server's UI language, not the user's. Jellyfin ties the
+  language to a client preference that never reaches the server.
+- Starting restricted content was already blocked and still is, whatever this
+  setting says: it is hidden from listings and returns no media sources.
+
 ## 1.2.0.0
 
 ### Added

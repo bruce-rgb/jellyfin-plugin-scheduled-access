@@ -151,7 +151,11 @@ Rules saved by earlier versions have no slot in the XML. `EndMinutes` is initial
 
 Time slots need precision a scheduled task can't give. An interval trigger would fire up to an hour late, and dropping it to minutes would flood the dashboard's task history with hundreds of daily entries.
 
-Instead, `ScheduleWatcher` — an `IHostedService` registered through `IPluginServiceRegistrator` — computes the next slot boundary and sleeps exactly until it, leaving no trace in that history. Measured in practice, it restores within milliseconds of the boundary.
+Instead, `ScheduleWatcher` — an `IHostedService` registered through `IPluginServiceRegistrator` — computes the next slot boundary and sleeps until it, leaving no trace in that history.
+
+> **It sleeps until one second *past* the boundary, never up to it.** `Task.Delay` is allowed to fire a few milliseconds early, and every decision in the plugin is taken on whole minutes, so waking at 22:14:59.999 for a 22:15 boundary reads the rule as not yet in force. The pass then does nothing, and the next sleep — computed from a clock that has since crossed 22:15 — discards that boundary as past and jumps to the following one. The slot would not switch until the hourly safety pass, up to an hour late. `ScheduleResolver.WakeMargin` is what stops that, and `AnEarlyWakeUpStillLandsInsideTheBoundaryMinute` is what keeps it from being trimmed back to zero.
+
+For the same reason the next wake-up is computed from **the instant the pass evaluated**, not from a fresh `DateTime.Now`: applying policies and walking sessions takes time, and re-reading the clock afterwards can already have crossed the boundary that still needs attending.
 
 Saving the configuration raises `Plugin.ConfigurationUpdated`, which cancels the watcher's sleep so a new rule takes effect immediately instead of waiting for a wake-up that might be hours away:
 
@@ -186,9 +190,53 @@ flowchart LR
 
 The watcher is what actually switches slots; the scheduled task is a manual button and a fallback for the case where the hosted service never starts. They can fire at the same moment — a server restart triggers both — which is why the semaphore isn't optional.
 
-The watcher's loop is: apply for *now*, ask the resolver when the next boundary falls, sleep until then (capped at an hour), repeat. A pass with nothing to change writes nothing, so the extra wake-ups from that cap cost nothing.
+The watcher's loop is: apply for *now*, stop or warn any playback that no longer fits, ask the resolver when to wake next, sleep until then (capped at an hour), repeat. A pass with nothing to change writes nothing, so the extra wake-ups from that cap cost nothing.
+
+Saving the configuration while a pass is running is not the same as saving it while the watcher sleeps: in the first case its cancellation token has already been disposed, and cancelling a disposed `CancellationTokenSource` throws. `OnConfigurationUpdated` swallows that one exception — there is nothing to wake, and the pass in flight will read the new configuration when it computes its next sleep. Without the catch, the exception travels up through `UpdateConfiguration` and the save fails from the configuration page.
 
 Disabling the plugin (`Enabled = false`) **leaves no restrictions dangling**: the next run restores every pending snapshot and discards them.
+
+### Stopping playback in progress
+
+Rewriting the policy does not reach a stream that is already open. Measured against 10.11.11, with a tag blocked for a user:
+
+| Request | Result |
+|---|---|
+| Listing the library | the item is gone |
+| `GET /Users/{user}/Items/{item}` | `404` |
+| `POST /Items/{item}/PlaybackInfo` | `0` media sources |
+
+So restricted content cannot be **started**. What survives is only a stream that was already running when the boundary passed: Jellyfin authorises playback once and does not re-check it segment by segment.
+
+`PlaybackGuard` closes that gap when `StopPlayback` is on. It walks `ISessionManager.Sessions`, and for each one playing something it asks whether the rule in force still allows that item. If not, it sends a `MessageCommand` and then a `PlaystateCommand.Stop`.
+
+```mermaid
+flowchart TB
+    Wake["Watcher wakes<br/>boundary or warning offset"] --> Apply["ScheduleEnforcer<br/>writes the policy"]
+    Apply --> Guard["PlaybackGuard"]
+    Guard --> Loop{{"For each session<br/>with something playing"}}
+
+    Loop --> Now{"Allowed by the<br/>rule in force now?"}
+    Now -->|no| Stop["Message + Stop"]
+    Now -->|yes| Soon{"Inside the warning window<br/>and forbidden at the boundary?"}
+    Soon -->|yes| Warn["Message only<br/>once per session and item"]
+    Soon -->|no| Skip["Leave it alone"]
+```
+
+Three decisions in there are less obvious than they look:
+
+- **The guard runs *after* the enforcer, never before.** Cutting playback the user's policy still permits would leave them staring at an item they can still see in the library.
+- **The cut belongs to a restriction *starting*, not a slot *ending*.** When a slot ends the content becomes allowed again; there is nothing to interrupt. This falls out of the design rather than being special-cased: with no rule in force, `ContentVisibility.IsAllowed` returns `true`.
+- **`ContentVisibility` decides both the warning and the cut**, rather than using Jellyfin's `IsVisibleStandalone` for the cut. The warning is a *prediction* — will this item still be allowed after the boundary? — and Jellyfin can only evaluate the present. Splitting the two would mean a warning that never arrives, or a cut nobody was warned about; one predicate that is occasionally wrong beats two that disagree.
+
+`ScheduleResolver.NextWakeUp` adds the warning offsets to the boundary set, so the watcher wakes early enough to warn. Offsets are applied to **every** boundary, starts included, because a start is exactly what triggers a cut. The offset wraps backwards past midnight: a boundary at 00:10 with 20 minutes of warning wakes at 23:50 the previous evening.
+
+Warnings are deduplicated per session and item, and forgotten when the boundary they referred to changes. Without that, the hourly drift-correction pass would re-warn every hour it landed inside the window.
+
+Two limits are structural, not bugs:
+
+- **Clients that don't accept remote control ignore both commands.** The guard checks `SupportsRemoteControl` and `SupportedCommands`, and logs a warning rather than pretending it worked.
+- **The message language comes from the server's `UICulture`**, not the user's. Jellyfin ties a language to a client preference that never reaches the server, so there is nothing per-session to read. `PluginStrings` reads the same `Locale/*.json` files the configuration page uses.
 
 ---
 
@@ -238,7 +286,7 @@ Rules that bite in practice:
 dotnet test
 ```
 
-The suite covers `ScheduleResolver` — when a rule is in force and when the next boundary falls. That's deliberately the only thing tested: it's pure logic with no server dependencies, and it's where every awkward case lives. The rest of the plugin is mostly orchestration over Jellyfin's own APIs, which is better verified by running it than by mocking it.
+The suite covers `ScheduleResolver` — when a rule is in force and when the next boundary falls — and `ContentVisibility`, which decides whether a rule allows one specific item. That's deliberately all that is tested: both are pure logic with no server dependencies, and between them they hold every awkward case. The rest of the plugin is mostly orchestration over Jellyfin's own APIs, which is better verified by running it than by mocking it.
 
 Cases worth keeping green:
 
@@ -247,6 +295,8 @@ Cases worth keeping green:
 - **Wrapping past midnight**, including that the tail belongs to the start day and doesn't leak into the previous one
 - Overlaps resolving shortest-first, one rule per user, ties broken deterministically
 - Next boundary always strictly in the future — returning "now" would spin the watcher in a tight loop
+- Warning offsets moving the wake-up earlier without losing the boundary itself, and wrapping backwards past midnight
+- `ContentVisibility` agreeing with what the enforcer writes: case-insensitive tags, an empty tag list filtering nothing, both filters combining, and an unresolved library falling **open** rather than cutting on a guess
 
 Dates in the tests are fixed rather than `DateTime.Now`, so the suite doesn't pass or fail depending on the day it runs.
 

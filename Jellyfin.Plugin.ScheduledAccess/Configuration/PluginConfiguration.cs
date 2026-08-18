@@ -40,6 +40,27 @@ public class PluginConfiguration : BasePluginConfiguration
     public ScheduleRule[] Rules { get; set; } = Array.Empty<ScheduleRule>();
 
     /// <summary>
+    /// Gets or sets a value indicating whether hay que cortar lo que se este
+    /// reproduciendo cuando una regla deja de permitirlo.
+    /// </summary>
+    /// <remarks>
+    /// Apagado por defecto a proposito. Jellyfin no vuelve a comprobar la
+    /// politica en un stream ya abierto, asi que hasta ahora lo empezado
+    /// terminaba; encender esto de golpe al actualizar cambiaria el
+    /// comportamiento de instalaciones existentes sin avisar.
+    /// </remarks>
+    public bool StopPlayback { get; set; }
+
+    /// <summary>
+    /// Gets or sets los minutos de aviso previo al corte. Cero no avisa.
+    /// </summary>
+    /// <remarks>
+    /// Solo tiene efecto con <see cref="StopPlayback"/> encendido: avisar de un
+    /// corte que no va a producirse seria mentir.
+    /// </remarks>
+    public int WarningMinutes { get; set; }
+
+    /// <summary>
     /// Gets or sets las instantaneas de politicas pendientes de restaurar.
     /// Las gestiona el plugin; la pagina de configuracion las reenvia tal cual.
     /// </summary>

@@ -4,7 +4,7 @@
 
 Restrict movies, TV shows and other media based on the day and time, using Jellyfin tags and libraries. A user signs in normally, but only sees the content you allow for that moment.
 
-![The plugin's configuration page: a toggle to enable day-of-week restrictions, and one rule per user with day checkboxes, a time slot, library checkboxes, a mode selector and a tag list.](docs/images/configuration.png)
+![The plugin's configuration page: toggles to enable day-of-week restrictions and to stop playback when a rule hides what is playing, a field for how many minutes of warning to give, and one rule per user with day checkboxes, a time slot, library checkboxes, a mode selector and a tag list.](docs/images/configuration.png)
 
 ---
 
@@ -17,6 +17,7 @@ Restrict movies, TV shows and other media based on the day and time, using Jelly
 - Create weekday/weekend content schedules.
 - Show only a specific library during certain hours of the day.
 - Swap what a kids account can watch between morning and evening.
+- Cut playback off when a slot starts hiding what is on screen, with a warning first.
 
 ---
 
@@ -118,12 +119,26 @@ Tags are **inherited from parent folders and collections**, so you can tag a who
 
 A rule can also limit which libraries are visible while it's active. The two filters combine: you can restrict to one library **and** filter by tags inside it. Leaving every library unchecked means library access isn't touched at all.
 
+### Stopping playback in progress
+
+Restrictions decide what a user can **find and start**. Once a stream is open, Jellyfin does not re-check permissions on it, so a film that was already playing keeps playing even after a rule starts hiding it.
+
+Ticking **Stop playback when a rule hides what is playing** closes that gap. When a rule starts hiding what is on screen, the plugin sends the player a short message and then a stop command. Set **Warn this many minutes beforehand** to give notice first — a message a few minutes early turns an abrupt cut into an expected one.
+
+Two things are worth knowing before you rely on it:
+
+- **It cuts in when a restriction *starts*, not when a slot *ends*.** At the end of a slot the content becomes allowed again, so there is nothing to interrupt. The cut belongs to the moment a stricter rule takes over.
+- **Clients that don't accept remote control ignore it.** The browser, the Android and the TV apps do; some others don't, and there is no way for the server to force them. When that happens the plugin says so in the log rather than failing silently.
+
+Starting restricted content is blocked regardless of this setting: it is hidden from every listing, and asking to play it directly returns no media sources.
+
 ---
 
 ## Known limitations
 
 - **Rules apply to administrator accounts too** (verified on 10.11.11). Unlike other Jellyfin parental controls, tag filtering doesn't exempt admins: if you apply a rule to yourself, you'll see the same trimmed library as anyone else. Be careful not to lock yourself out of content you need.
 - Overlapping slots resolve by "shortest wins", but the configuration page doesn't warn you when they overlap. You have to reason about it yourself.
+- **Stopping playback in progress depends on the client.** A player that doesn't accept remote control keeps playing until the item ends. Nothing can be reached from the server to force it.
 - The plugin does **not** hide content the user has already watched. It schedules by day, time, tag and library only.
 - The scheduled task name appears in English regardless of your language. Jellyfin exposes a task's name as a single server-wide string, not per user, so it can't be localised. The configuration page itself is localised (English and Spanish).
 

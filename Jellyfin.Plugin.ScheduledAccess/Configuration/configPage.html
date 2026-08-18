@@ -20,6 +20,30 @@
                         </div>
                     </div>
 
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="StopPlayback" name="StopPlayback" type="checkbox" is="emby-checkbox" />
+                            <span data-localize="StopPlaybackLabel">Stop playback when a rule hides what is playing</span>
+                        </label>
+                        <div class="fieldDescription" data-localize="StopPlaybackDescription">
+                            Jellyfin does not re-check permissions on a stream that is already open, so without
+                            this what was already playing keeps playing. It cuts in when a rule starts hiding what
+                            is on screen, not when a slot ends: at the end of a slot the content is allowed again
+                            and there is nothing to interrupt.
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="WarningMinutes"
+                               data-localize="WarningMinutesLabel">Warn this many minutes beforehand</label>
+                        <input id="WarningMinutes" name="WarningMinutes" type="number" is="emby-input"
+                               min="0" max="120" step="1" value="0" />
+                        <div class="fieldDescription" data-localize="WarningMinutesDescription">
+                            Minutes of notice before playback is cut. Zero sends no warning. The message only
+                            reaches clients that accept remote control.
+                        </div>
+                    </div>
+
                     <h3 data-localize="Rules">Rules</h3>
                     <div class="fieldDescription" style="margin-bottom:1em;" data-localize="RulesDescription">
                         Each rule applies to one user on the days you check. Tags are inherited from parent
@@ -302,6 +326,8 @@
                         })
                         .then(function (config) {
                             page.querySelector('#Enabled').checked = config.Enabled;
+                            page.querySelector('#StopPlayback').checked = !!config.StopPlayback;
+                            page.querySelector('#WarningMinutes').value = config.WarningMinutes || 0;
 
                             container.innerHTML = '';
                             (config.Rules || []).forEach(renderRule);
@@ -331,6 +357,11 @@
 
                     ApiClient.getPluginConfiguration(pluginUniqueId).then(function (config) {
                         config.Enabled = page.querySelector('#Enabled').checked;
+                        config.StopPlayback = page.querySelector('#StopPlayback').checked;
+                        // Un valor absurdo aqui adelantaria el despertar del
+                        // vigilante hasta hacerlo continuo, asi que se acota.
+                        config.WarningMinutes = Math.max(0, Math.min(120,
+                            parseInt(page.querySelector('#WarningMinutes').value, 10) || 0));
                         config.Rules = collectRules();
 
                         ApiClient.updatePluginConfiguration(pluginUniqueId, config).then(function (result) {

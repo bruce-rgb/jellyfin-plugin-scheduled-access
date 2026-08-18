@@ -25,6 +25,7 @@ public class ScheduleWatcher : BackgroundService
     private static readonly TimeSpan MaxSleep = TimeSpan.FromHours(1);
 
     private readonly ScheduleEnforcer _enforcer;
+    private readonly PlaybackGuard _guard;
     private readonly ILogger<ScheduleWatcher> _logger;
 
     // Se releva en cada vuelta para poder interrumpir el sueno cuando cambia
@@ -36,10 +37,12 @@ public class ScheduleWatcher : BackgroundService
     /// Initializes a new instance of the <see cref="ScheduleWatcher"/> class.
     /// </summary>
     /// <param name="enforcer">Instance of the <see cref="ScheduleEnforcer"/>.</param>
+    /// <param name="guard">Instance of the <see cref="PlaybackGuard"/>.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{TCategoryName}"/> interface.</param>
-    public ScheduleWatcher(ScheduleEnforcer enforcer, ILogger<ScheduleWatcher> logger)
+    public ScheduleWatcher(ScheduleEnforcer enforcer, PlaybackGuard guard, ILogger<ScheduleWatcher> logger)
     {
         _enforcer = enforcer;
+        _guard = guard;
         _logger = logger;
     }
 
@@ -59,6 +62,11 @@ public class ScheduleWatcher : BackgroundService
                 try
                 {
                     await _enforcer.ApplyAsync(now, stoppingToken).ConfigureAwait(false);
+
+                    // Despues de aplicar, nunca antes: cortar una reproduccion
+                    // que la politica todavia permite dejaria al usuario mirando
+                    // un item que sigue viendo en la biblioteca.
+                    await _guard.EnforceAsync(now, stoppingToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -74,7 +82,7 @@ public class ScheduleWatcher : BackgroundService
                 }
 #pragma warning restore CA1031
 
-                await SleepUntilNextBoundaryAsync(stoppingToken).ConfigureAwait(false);
+                await SleepUntilNextWakeUpAsync(now, stoppingToken).ConfigureAwait(false);
             }
         }
         finally
@@ -84,30 +92,49 @@ public class ScheduleWatcher : BackgroundService
         }
     }
 
-    private async Task SleepUntilNextBoundaryAsync(CancellationToken stoppingToken)
+    /// <param name="moment">
+    /// El instante que acaba de evaluarse. El proximo despertar se calcula
+    /// desde EL, no desde la hora actual: aplicar y revisar sesiones lleva su
+    /// tiempo, y releer el reloj despues podria haber cruzado ya el limite que
+    /// toca atender, con lo que se descartaria por pasado.
+    /// </param>
+    /// <param name="stoppingToken">Token de parada del servicio.</param>
+    private async Task SleepUntilNextWakeUpAsync(DateTime moment, CancellationToken stoppingToken)
     {
-        var rules = Plugin.Instance?.Configuration.Rules ?? [];
-        var now = DateTime.Now;
-        var next = ScheduleResolver.NextBoundary(rules, now);
+        // El token se crea ANTES de leer la configuracion. Si alguien guarda
+        // justo mientras se calcula el proximo despertar, la cancelacion cae
+        // sobre este token y no sobre uno ya descartado, que se perderia y
+        // dejaria al vigilante durmiendo con reglas viejas.
+        using var wake = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        Interlocked.Exchange(ref _wakeUp, wake)?.Dispose();
 
-        var delay = next - now;
+        var config = Plugin.Instance?.Configuration;
+        var rules = config?.Rules ?? [];
+
+        // Con aviso previo hay que despertar antes del limite. Solo cuenta si
+        // el corte esta activado: sin el no hay nada que anunciar.
+        var warning = config is not null && config.StopPlayback ? config.WarningMinutes : 0;
+
+        var next = ScheduleResolver.NextWakeUp(rules, moment, warning);
+
+        // La espera se mide contra el reloj real, aunque el objetivo salga de
+        // moment: entre una cosa y otra puede haber pasado tiempo.
+        var delay = next - DateTime.Now;
         if (delay > MaxSleep)
         {
             delay = MaxSleep;
         }
         else if (delay <= TimeSpan.Zero)
         {
-            // No deberia ocurrir, pero dormir cero giraria en vacio quemando CPU.
+            // La pasada tardo mas que lo que quedaba. Se da una vuelta corta y
+            // se recalcula, en vez de dormir cero y girar en vacio.
             delay = TimeSpan.FromSeconds(1);
         }
 
         _logger.LogDebug(
-            "Next schedule check in {Delay} (boundary at {Next})",
+            "Next schedule check in {Delay} (waking at {Next})",
             delay,
             next.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
-
-        using var wake = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        Interlocked.Exchange(ref _wakeUp, wake)?.Dispose();
 
         try
         {
@@ -123,7 +150,20 @@ public class ScheduleWatcher : BackgroundService
     private void OnConfigurationUpdated(object? sender, EventArgs e)
     {
         _logger.LogDebug("Configuration changed; re-evaluating the schedule");
-        Volatile.Read(ref _wakeUp)?.Cancel();
+
+        try
+        {
+            Volatile.Read(ref _wakeUp)?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // El vigilante no esta durmiendo, esta en plena pasada: su token ya
+            // se desecho. No hay nada que despertar, y la vuelta en curso leera
+            // la configuracion nueva al calcular el siguiente despertar.
+            //
+            // Sin este catch la excepcion sube hasta UpdateConfiguration y el
+            // guardado falla desde la pagina de configuracion.
+        }
     }
 
     /// <inheritdoc />

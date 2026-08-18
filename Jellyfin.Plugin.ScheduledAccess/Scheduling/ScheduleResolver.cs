@@ -16,6 +16,12 @@ namespace Jellyfin.Plugin.ScheduledAccess.Scheduling;
 public static class ScheduleResolver
 {
     /// <summary>
+    /// Cuanto se pasa de largo cada limite al dormir, para no despertar antes
+    /// de tiempo. Ver <see cref="NextWakeUp"/>.
+    /// </summary>
+    public static readonly TimeSpan WakeMargin = TimeSpan.FromSeconds(1);
+
+    /// <summary>
     /// Minutos transcurridos desde medianoche.
     /// </summary>
     /// <param name="moment">Instante a convertir.</param>
@@ -111,7 +117,7 @@ public static class ScheduleResolver
     }
 
     /// <summary>
-    /// Momento en que cambia el estado por proxima vez, para dormir hasta el.
+    /// Momento en que cambia el estado por proxima vez.
     /// </summary>
     /// <param name="rules">Reglas configuradas.</param>
     /// <param name="moment">Instante de referencia.</param>
@@ -120,19 +126,66 @@ public static class ScheduleResolver
     /// ninguno despues. Nunca devuelve un instante en el pasado ni el actual.
     /// </returns>
     public static DateTime NextBoundary(IEnumerable<ScheduleRule> rules, DateTime moment)
+        => NextAfter(Boundaries(rules, 0), moment);
+
+    /// <summary>
+    /// Instante en que toca despertar, un pelo DESPUES del limite.
+    /// </summary>
+    /// <remarks>
+    /// Dos cosas distintas, y las dos importan.
+    ///
+    /// Con aviso previo no basta con despertar en los limites: hay que llegar
+    /// unos minutos antes para poder avisar. Se adelantan TODOS los limites,
+    /// no solo los finales de franja, porque lo que corta una reproduccion es
+    /// que empiece una restriccion, no que termine.
+    ///
+    /// Y sobre el limite se suma <see cref="WakeMargin"/>, que no es cosmetico.
+    /// Aqui todo se decide por minutos enteros, y <c>Task.Delay</c> puede
+    /// adelantarse unos milisegundos: despertar a las 22:14:59.999 para el
+    /// limite de las 22:15 hace que la regla se lea como todavia no vigente,
+    /// que el aviso caiga fuera de su ventana por un milisegundo, y -- lo peor
+    /// -- que el calculo siguiente ya parta de las 22:15 y descarte ese limite
+    /// por pasado. La franja no llegaba a aplicarse hasta la pasada de
+    /// seguridad, hasta una hora despues.
+    /// </remarks>
+    /// <param name="rules">Reglas configuradas.</param>
+    /// <param name="moment">Instante de referencia.</param>
+    /// <param name="warningMinutes">Minutos de adelanto. Cero no adelanta nada.</param>
+    /// <returns>El siguiente instante en que hay algo que hacer.</returns>
+    public static DateTime NextWakeUp(IEnumerable<ScheduleRule> rules, DateTime moment, int warningMinutes)
+        => NextAfter(Boundaries(rules, warningMinutes), moment) + WakeMargin;
+
+    private static SortedSet<int> Boundaries(IEnumerable<ScheduleRule> rules, int warningMinutes)
     {
         ArgumentNullException.ThrowIfNull(rules);
 
         // La medianoche entra siempre: es cuando cambia el dia de la semana,
         // aunque ninguna regla tenga un limite ahi.
         var boundaries = new SortedSet<int> { 0 };
+        var warning = Math.Clamp(warningMinutes, 0, ScheduleRule.MinutesPerDay - 1);
 
         foreach (var rule in rules)
         {
-            boundaries.Add(Math.Clamp(rule.StartMinutes, 0, ScheduleRule.MinutesPerDay));
-            boundaries.Add(Math.Clamp(rule.EndMinutes, 0, ScheduleRule.MinutesPerDay));
+            foreach (var edge in new[] { rule.StartMinutes, rule.EndMinutes })
+            {
+                var minute = Math.Clamp(edge, 0, ScheduleRule.MinutesPerDay);
+                boundaries.Add(minute);
+
+                if (warning > 0)
+                {
+                    // El adelanto puede cruzar la medianoche hacia atras: un
+                    // limite a las 00:10 con diez minutos de aviso despierta a
+                    // las 00:00, y con veinte, a las 23:50 del dia anterior.
+                    boundaries.Add((((minute - warning) % ScheduleRule.MinutesPerDay) + ScheduleRule.MinutesPerDay) % ScheduleRule.MinutesPerDay);
+                }
+            }
         }
 
+        return boundaries;
+    }
+
+    private static DateTime NextAfter(SortedSet<int> boundaries, DateTime moment)
+    {
         var minute = MinuteOfDay(moment);
         var midnight = moment.Date;
 
