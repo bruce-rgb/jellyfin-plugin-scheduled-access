@@ -264,7 +264,7 @@ The `csproj` globs `Locale\*.json`, so no build change is needed.
 
 ## Building
 
-Requires the **.NET SDK 9.0** — Jellyfin 10.11 targets `net9.0`; 10.10 targeted `net8.0`. The `Jellyfin.Controller` / `Jellyfin.Model` packages must be **pinned to the server's exact version**.
+Requires the **.NET SDK 10.0** — Jellyfin 12 targets `net10.0` (10.11 targeted `net9.0`, 10.10 `net8.0`). The `Jellyfin.Controller` / `Jellyfin.Model` packages are pinned to **12.0.0, the oldest server the plugin supports**, not to the newest: building against a newer patch could pick up an API that older 12.x servers don't have.
 
 ```bash
 dotnet publish --configuration Debug Jellyfin.Plugin.ScheduledAccess.sln
@@ -427,9 +427,11 @@ Since the service runs as `NT Authority\NetworkService`, **VS Code must be start
 
 Builds in **Release** and leaves `dist/Jellyfin.Plugin.ScheduledAccess/` with just the DLL and a complete `meta.json`. It deliberately excludes the `.pdb` (debug symbols), the `.xml` (documentation) and the `.deps.json`: the server doesn't need them to load a plugin.
 
-`meta.json` is written by hand because the one Jellyfin generates on a hot install leaves `version: 0.0.0.0` and the descriptive fields empty. Its `targetAbi` is `10.11.0.0`, not `10.11.11.0`, so it covers the whole 10.11.x series rather than a single patch.
+`meta.json` is written by hand because the one Jellyfin generates on a hot install leaves `version: 0.0.0.0` and the descriptive fields empty. Its `targetAbi` is `12.0.0.0`, not `12.4.0.0`, so it covers the whole 12.x series rather than a single patch.
 
-> **The ABI must match the target server.** A plugin built against 10.11 won't load on 10.10: it shows as *NotSupported*. The DLL is pure IL, so architecture (x86_64, ARM) is irrelevant — only the version matters.
+> **The ABI is a minimum, not an exact match.** Jellyfin loads a plugin whose `targetAbi` is lower than or equal to the server version, and marks it *NotSupported* if it is higher. A plugin built against 12.0 won't load on 10.11. The DLL is pure IL, so architecture (x86_64, ARM) is irrelevant — only the version matters.
+>
+> A lower ABI loading does not mean it works: the check only compares numbers. On the 10.11 → 12 upgrade, version 1.3.0.0 (built against 10.11.11) kept loading and running, because nothing it calls changed. Another plugin on the same server, *Chapter Segments Provider* 4.0, failed with `TypeLoadException` because Jellyfin 12 added a method to an interface it implements. That is why 1.4.0.0 is rebuilt against 12.0.0 instead of relying on the old binary. Before trusting an old build on a new major version, compile the source against the new packages: API breaks show up as build errors instead of runtime failures.
 
 ### 2. Locate the config volume
 

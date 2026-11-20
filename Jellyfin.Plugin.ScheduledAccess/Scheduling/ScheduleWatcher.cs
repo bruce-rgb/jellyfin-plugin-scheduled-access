@@ -131,10 +131,13 @@ public class ScheduleWatcher : BackgroundService
             delay = TimeSpan.FromSeconds(1);
         }
 
-        _logger.LogDebug(
-            "Next schedule check in {Delay} (waking at {Next})",
-            delay,
-            next.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug(
+                "Next schedule check in {Delay} (waking at {Next})",
+                delay,
+                next.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+        }
 
         try
         {

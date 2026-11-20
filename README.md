@@ -39,7 +39,8 @@ Access Schedule is all-or-nothing: outside the allowed window the user simply ca
 
 | | Version | Note |
 |---|---|---|
-| Jellyfin Server | **10.11.x** | The `targetAbi` must match, or the plugin shows up as *NotSupported* |
+| Jellyfin Server | **12.x** (plugin 1.4.0.0 and later) | Built against 12.0.0 with `targetAbi` 12.0.0.0 |
+| Jellyfin Server | **10.11.x** | Use plugin **1.3.0.0**: the repository still offers it, and Jellyfin picks it automatically on 10.11 |
 
 The DLL is pure IL, so the architecture (x86_64, ARM) is irrelevant — only the server version matters. The same build works on a Raspberry Pi and on an x86 server.
 

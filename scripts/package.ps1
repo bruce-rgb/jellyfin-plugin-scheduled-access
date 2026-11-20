@@ -22,8 +22,9 @@
     Version del plugin. Debe coincidir con Directory.Build.props y build.yaml.
 
 .PARAMETER TargetAbi
-    ABI minima de Jellyfin. Se usa 10.11.0.0 (no 10.11.11.0) para que valga
-    en toda la serie 10.11.x en lugar de un unico parche.
+    ABI minima de Jellyfin. Se usa 12.0.0.0 (no 12.4.0.0) para que valga
+    en toda la serie 12.x en lugar de un unico parche. Jellyfin carga un
+    plugin si su targetAbi es menor o igual que la version del servidor.
 
 .PARAMETER Repo
     Repositorio de GitHub "owner/nombre". De aqui sale la sourceUrl del
@@ -35,7 +36,7 @@
 [CmdletBinding()]
 param(
     [string]$Version = '1.0.0.0',
-    [string]$TargetAbi = '10.11.0.0',
+    [string]$TargetAbi = '12.0.0.0',
     [string]$Repo = 'bruce-rgb/jellyfin-plugin-scheduled-access',
     [string]$Changelog = 'Version inicial.'
 )
@@ -85,7 +86,7 @@ if (Test-Path $stage) {
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 Copy-Item -Force `
-    -Path (Join-Path $root "$name/bin/Release/net9.0/publish/$name.dll") `
+    -Path (Join-Path $root "$name/bin/Release/net10.0/publish/$name.dll") `
     -Destination $stage
 
 $meta = [ordered]@{

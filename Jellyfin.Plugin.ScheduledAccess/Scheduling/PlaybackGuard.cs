@@ -177,11 +177,14 @@ public class PlaybackGuard
             new PlaystateRequest { Command = PlaystateCommand.Stop },
             cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation(
-            "Stopped {Item} for {User} on {Client}: outside the allowed schedule",
-            item.Name,
-            session.UserName,
-            session.Client);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation(
+                "Stopped {Item} for {User} on {Client}: outside the allowed schedule",
+                item.Name,
+                session.UserName,
+                session.Client);
+        }
     }
 
     private async Task WarnAsync(SessionInfo session, BaseItem item, DateTime boundary, CancellationToken cancellationToken)
@@ -204,21 +207,28 @@ public class PlaybackGuard
             text,
             cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation(
-            "Warned {User} that {Item} will stop at {Boundary}",
-            session.UserName,
-            item.Name,
-            at);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation(
+                "Warned {User} that {Item} will stop at {Boundary}",
+                session.UserName,
+                item.Name,
+                at);
+        }
     }
 
     private async Task SendMessageAsync(SessionInfo session, string header, string text, CancellationToken cancellationToken)
     {
         if (!Supports(session, GeneralCommandType.DisplayMessage))
         {
-            _logger.LogDebug(
-                "The {Client} client cannot display messages; skipping the notice for {User}",
-                session.Client,
-                session.UserName);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug(
+                    "The {Client} client cannot display messages; skipping the notice for {User}",
+                    session.Client,
+                    session.UserName);
+            }
+
             return;
         }
 

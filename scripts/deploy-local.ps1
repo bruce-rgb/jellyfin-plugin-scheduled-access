@@ -44,7 +44,7 @@ $ErrorActionPreference = 'Stop'
 $root  = Split-Path -Parent $PSScriptRoot
 $name  = 'Jellyfin.Plugin.ScheduledAccess'
 $guid  = '65e8ae1e-ea44-4b8c-a2c7-16f46a158eb4'
-$build = Join-Path $root "$name/bin/$Configuration/net9.0/publish"
+$build = Join-Path $root "$name/bin/$Configuration/net10.0/publish"
 $dest  = Join-Path $DataDir "plugins/$name"
 
 Write-Host "==> Compilando ($Configuration)" -ForegroundColor Cyan
@@ -70,7 +70,7 @@ $meta = [ordered]@{
     name        = 'Scheduled Access'
     overview    = 'Restricciones de contenido por dia de la semana'
     owner       = 'bruce-rgb'
-    targetAbi   = '10.11.0.0'
+    targetAbi   = '12.0.0.0'
     timestamp   = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffffff') + 'Z'
     version     = $version
     status      = 'Active'

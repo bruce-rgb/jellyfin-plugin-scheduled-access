@@ -8,6 +8,21 @@ not for the person who wrote the code.
 Headings must stay at `## <version>` with the four-part version exactly as
 tagged, because the workflow extracts the section by matching that line.
 
+## 1.4.0.0
+
+### Changed
+- Requires **Jellyfin 12**. The plugin is now built against Jellyfin 12.0.0
+  and .NET 10, so it runs on any 12.x server.
+- No changes to rules, schedules or settings: an existing configuration keeps
+  working as is after updating.
+
+### Notes
+- Staying on Jellyfin 10.11? Keep version 1.3.0.0. The repository still offers
+  it, and Jellyfin only lists the versions that match your server.
+- Version 1.3.0.0 happened to keep working after upgrading to Jellyfin 12, but
+  only because nothing it uses changed. This release is built and tested
+  against 12 so that it doesn't rely on luck.
+
 ## 1.3.0.0
 
 ### Added

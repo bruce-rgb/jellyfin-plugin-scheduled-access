@@ -163,13 +163,16 @@ public class ScheduleEnforcer : IDisposable
 
             snapshots.Add(snapshot);
 
-            _logger.LogInformation(
-                "Policy snapshot saved for {Username} (allowed={Allowed}, blocked={Blocked}, allFolders={AllFolders}, folders={Folders})",
-                user.Username,
-                snapshot.AllowedTags.Length,
-                snapshot.BlockedTags.Length,
-                snapshot.EnableAllFolders,
-                snapshot.EnabledFolders.Length);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation(
+                    "Policy snapshot saved for {Username} (allowed={Allowed}, blocked={Blocked}, allFolders={AllFolders}, folders={Folders})",
+                    user.Username,
+                    snapshot.AllowedTags.Length,
+                    snapshot.BlockedTags.Length,
+                    snapshot.EnableAllFolders,
+                    snapshot.EnabledFolders.Length);
+            }
         }
 
         // El estado deseado se calcula SIEMPRE desde la instantanea, nunca
@@ -210,13 +213,16 @@ public class ScheduleEnforcer : IDisposable
 
         await _userManager.UpdatePolicyAsync(rule.UserId, policy).ConfigureAwait(false);
 
-        _logger.LogInformation(
-            "Restriction applied to {Username} at {Time} in {Mode} mode with {Tags} tags and {Libraries} libraries",
-            user.Username,
-            moment.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture),
-            rule.Mode,
-            rule.Tags.Length,
-            restrictsLibraries ? rule.LibraryIds.Length : 0);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation(
+                "Restriction applied to {Username} at {Time} in {Mode} mode with {Tags} tags and {Libraries} libraries",
+                user.Username,
+                moment.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture),
+                rule.Mode,
+                rule.Tags.Length,
+                restrictsLibraries ? rule.LibraryIds.Length : 0);
+        }
 
         return true;
     }
@@ -237,7 +243,11 @@ public class ScheduleEnforcer : IDisposable
         {
             // El usuario ya no existe: no hay politica que restaurar, asi que
             // la instantanea solo es ruido.
-            _logger.LogInformation("Discarded orphaned snapshot for {UserId}", snapshot.UserId);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation("Discarded orphaned snapshot for {UserId}", snapshot.UserId);
+            }
+
             return true;
         }
 
@@ -270,7 +280,11 @@ public class ScheduleEnforcer : IDisposable
 
         await _userManager.UpdatePolicyAsync(snapshot.UserId, policy).ConfigureAwait(false);
 
-        _logger.LogInformation("Policy restored for {Username}", user.Username);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Policy restored for {Username}", user.Username);
+        }
+
         return true;
     }
 
